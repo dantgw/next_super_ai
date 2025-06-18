@@ -4,9 +4,11 @@ import {
   transcribeClient,
   translateClient,
   bedrockClient,
+  pollyClient,
   transcribeLanguages,
   translateLanguages,
   speakerLabels,
+  pollyVoices,
 } from "../config/aws-config";
 import {
   StartStreamTranscriptionCommand,
@@ -14,6 +16,7 @@ import {
 } from "@aws-sdk/client-transcribe-streaming";
 import { TranslateTextCommand } from "@aws-sdk/client-translate";
 import { InvokeModelCommand } from "@aws-sdk/client-bedrock-runtime";
+import { SynthesizeSpeechCommand } from "@aws-sdk/client-polly";
 import MicrophoneStream from "microphone-stream";
 import { Buffer } from "buffer";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -26,7 +29,7 @@ import {
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { Mic, StopCircle, Loader2, FileText } from "lucide-react";
+import { Mic, StopCircle, Loader2, FileText, Volume2 } from "lucide-react";
 
 interface TranscriptionProps {
   className?: string;
@@ -39,6 +42,7 @@ interface SpeakerSegment {
   timestamp: number;
   language?: string;
   side: "left" | "right";
+  audioUrl?: string | null;
 }
 
 // Add type for supported language codes
@@ -60,6 +64,8 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
   const [activeRecorder, setActiveRecorder] = useState<
     "provider" | "patient" | null
   >(null);
+  const [isPlayingAudio, setIsPlayingAudio] = useState<number | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const microphoneStreamRef = useRef<MicrophoneStream | null>(null);
   const transcribeStreamRef = useRef<any>(null);
@@ -235,7 +241,7 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
                   };
 
                   // Add original segment immediately
-                  setSpeakerSegments((prev) => [...prev, newSegment]);
+                  await addSegmentWithAudio(newSegment);
                   console.log(
                     "Added original segment to",
                     isProviderSpeaking ? "left" : "right"
@@ -250,33 +256,7 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
                     : primaryLanguage.split("-")[0];
 
                   // Start translation without awaiting
-                  translateText(newTranscript, sourceCode, targetCode)
-                    .then((translatedText) => {
-                      if (translatedText) {
-                        const translatedSegment: SpeakerSegment = {
-                          id: Date.now(),
-                          speaker: isProviderSpeaking ? "Doctor" : "Patient",
-                          text: translatedText,
-                          timestamp: Date.now(),
-                          language: isProviderSpeaking
-                            ? targetLanguage
-                            : primaryLanguage,
-                          side: isProviderSpeaking ? "right" : "left",
-                        };
-                        setSpeakerSegments((prev) => [
-                          ...prev,
-                          translatedSegment,
-                        ]);
-                        console.log(
-                          "Added translated segment to",
-                          isProviderSpeaking ? "right" : "left"
-                        );
-                      }
-                    })
-                    .catch((error) => {
-                      console.error("Translation error:", error);
-                      setError("Translation failed. Please try again.");
-                    });
+                  await handleTranslation(newTranscript, isProviderSpeaking);
                 }
               }
             }
@@ -455,6 +435,150 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
     return speaker === "Doctor" ? labels.doctor : labels.patient;
   };
 
+  // Add synthesizeSpeech function
+  const synthesizeSpeech = async (text: string, languageCode: string) => {
+    try {
+      const voice = pollyVoices[languageCode as keyof typeof pollyVoices];
+
+      const command = new SynthesizeSpeechCommand({
+        Text: text,
+        VoiceId: voice as any,
+        OutputFormat: "mp3",
+        Engine: "neural",
+      });
+
+      const response = await pollyClient.send(command);
+
+      if (response.AudioStream) {
+        const blob = new Blob(
+          [await response.AudioStream.transformToByteArray()],
+          { type: "audio/mpeg" }
+        );
+        return URL.createObjectURL(blob);
+      }
+      return null;
+    } catch (err) {
+      console.error("Error synthesizing speech:", err);
+      return null;
+    }
+  };
+
+  // Modify the existing code where we add segments to include audio synthesis
+  const addSegmentWithAudio = async (segment: SpeakerSegment) => {
+    try {
+      const audioUrl = await synthesizeSpeech(
+        segment.text,
+        segment.language || primaryLanguage
+      );
+      const segmentWithAudio = { ...segment, audioUrl };
+      setSpeakerSegments((prev) => [...prev, segmentWithAudio]);
+    } catch (err) {
+      console.error("Error adding segment with audio:", err);
+      setSpeakerSegments((prev) => [...prev, segment]);
+    }
+  };
+
+  // Add audio playback control
+  const handlePlayAudio = async (
+    segmentId: number,
+    audioUrl: string | null | undefined
+  ) => {
+    if (!audioUrl) return;
+
+    try {
+      if (isPlayingAudio === segmentId) {
+        audioRef.current?.pause();
+        setIsPlayingAudio(null);
+        return;
+      }
+
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
+
+      const audio = new Audio(audioUrl);
+      audioRef.current = audio;
+
+      audio.onended = () => {
+        setIsPlayingAudio(null);
+      };
+
+      audio.play();
+      setIsPlayingAudio(segmentId);
+    } catch (err) {
+      console.error("Error playing audio:", err);
+      setError("Failed to play audio");
+    }
+  };
+
+  // Modify the translation handling code
+  const handleTranslation = async (
+    newTranscript: string,
+    isProviderSpeaking: boolean
+  ) => {
+    const sourceCode = isProviderSpeaking
+      ? primaryLanguage.split("-")[0]
+      : targetLanguage.split("-")[0];
+    const targetCode = isProviderSpeaking
+      ? targetLanguage.split("-")[0]
+      : primaryLanguage.split("-")[0];
+
+    try {
+      const translatedText = await translateText(
+        newTranscript,
+        sourceCode,
+        targetCode
+      );
+      if (translatedText) {
+        const translatedSegment: SpeakerSegment = {
+          id: Date.now(),
+          speaker: isProviderSpeaking ? "Doctor" : "Patient",
+          text: translatedText,
+          timestamp: Date.now(),
+          language: isProviderSpeaking ? targetLanguage : primaryLanguage,
+          side: isProviderSpeaking ? "right" : "left",
+        };
+        await addSegmentWithAudio(translatedSegment);
+      }
+    } catch (error) {
+      console.error("Translation error:", error);
+      setError("Translation failed. Please try again.");
+    }
+  };
+
+  // Update the segment rendering in the return statement to include audio playback buttons
+  const renderSegment = (segment: SpeakerSegment) => (
+    <div key={segment.id} className="space-y-2 bg-slate-50 p-4 rounded-lg">
+      <div className="flex flex-col gap-2">
+        <div className="flex justify-between items-center">
+          <span className="text-sm font-semibold text-slate-700">
+            {getSpeakerLabel(
+              segment.speaker,
+              segment.language || primaryLanguage
+            )}
+          </span>
+          {segment.audioUrl && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => handlePlayAudio(segment.id, segment.audioUrl)}
+              className={
+                isPlayingAudio === segment.id
+                  ? "text-blue-600"
+                  : "text-gray-600"
+              }
+            >
+              <Volume2 className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
+        <p className="text-base leading-relaxed text-gray-900">
+          {segment.text}
+        </p>
+      </div>
+    </div>
+  );
+
   return (
     <div className="flex flex-col space-y-8 p-8 max-w-7xl mx-auto">
       {/* Audio Input Section */}
@@ -609,24 +733,7 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
                 ) : (
                   speakerSegments
                     .filter((segment) => segment.side === "left")
-                    .map((segment) => (
-                      <div
-                        key={segment.id}
-                        className="space-y-2 bg-slate-50 p-4 rounded-lg"
-                      >
-                        <div className="flex flex-col gap-2">
-                          <span className="text-sm font-semibold text-slate-700">
-                            {getSpeakerLabel(
-                              segment.speaker,
-                              segment.language || primaryLanguage
-                            )}
-                          </span>
-                          <p className="text-base leading-relaxed text-gray-900">
-                            {segment.text}
-                          </p>
-                        </div>
-                      </div>
-                    ))
+                    .map(renderSegment)
                 )}
               </div>
             </ScrollArea>
@@ -666,24 +773,7 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
                 ) : (
                   speakerSegments
                     .filter((segment) => segment.side === "right")
-                    .map((segment) => (
-                      <div
-                        key={`trans-${segment.id}`}
-                        className="space-y-2 bg-slate-50 p-4 rounded-lg"
-                      >
-                        <div className="flex flex-col gap-2">
-                          <span className="text-sm font-semibold text-slate-700">
-                            {getSpeakerLabel(
-                              segment.speaker,
-                              segment.language || targetLanguage
-                            )}
-                          </span>
-                          <p className="text-base leading-relaxed text-gray-900">
-                            {segment.text}
-                          </p>
-                        </div>
-                      </div>
-                    ))
+                    .map(renderSegment)
                 )}
               </div>
             </ScrollArea>

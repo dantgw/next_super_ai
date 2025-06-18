@@ -1,6 +1,7 @@
 import { TranscribeStreamingClient } from "@aws-sdk/client-transcribe-streaming";
 import { TranslateClient } from "@aws-sdk/client-translate";
 import { BedrockRuntimeClient } from "@aws-sdk/client-bedrock-runtime";
+import { PollyClient } from "@aws-sdk/client-polly";
 
 // AWS Configuration
 export const awsConfig = {
@@ -15,6 +16,22 @@ export const awsConfig = {
 export const transcribeClient = new TranscribeStreamingClient(awsConfig);
 export const translateClient = new TranslateClient(awsConfig);
 export const bedrockClient = new BedrockRuntimeClient(awsConfig);
+export const pollyClient = new PollyClient(awsConfig);
+
+// Polly voice mapping for different languages
+export const pollyVoices = {
+  "en-US": "Matthew",
+  "es-US": "Miguel",
+  "fr-FR": "Mathieu",
+  "de-DE": "Daniel",
+  "it-IT": "Giorgio",
+  "pt-BR": "Ricardo",
+  "ar-SA": "Zeina",
+  "hi-IN": "Aditi",
+  "ja-JP": "Takumi",
+  "zh-CN": "Zhiyu",
+  "ko-KR": "Seoyeon",
+};
 
 // Supported languages for AWS Transcribe
 export const transcribeLanguages = [
