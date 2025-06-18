@@ -1,16 +1,36 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { useEffect, useState, useRef } from "react";
 import { supabase } from "../lib/supabase";
 import { User as UserIcon } from "lucide-react";
 import type { User } from "@supabase/supabase-js";
+import Link from "next/link";
 
 export function Navigation() {
   const router = useRouter();
+  const pathname = usePathname();
   const [user, setUser] = useState<User | null>(null);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Smooth scroll to section by id
+  const scrollToSection = (id: string) => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth" });
+    }
+  };
+
+  // Handle nav click: if on home, scroll; else, go home then scroll
+  const handleNavClick = (sectionId: string) => (e: React.MouseEvent) => {
+    e.preventDefault();
+    if (pathname === "/") {
+      scrollToSection(sectionId);
+    } else {
+      router.push(`/#${sectionId}`);
+    }
+  };
 
   useEffect(() => {
     // Fetch user on mount
@@ -58,30 +78,53 @@ export function Navigation() {
   };
 
   return (
-    <nav className="flex space-x-4 items-center relative">
-      {/* <Link
-        href="/transcribe"
-        className={cn(
-          "font-medium transition-colors",
-          pathname === "/transcribe"
-            ? "text-blue-600 hover:text-blue-800"
-            : "text-gray-600 hover:text-gray-800"
-        )}
-      >
-        Transcription
-      </Link>
-      <Link
-        href="/summarize"
-        className={cn(
-          "font-medium transition-colors",
-          pathname === "/summarize"
-            ? "text-blue-600 hover:text-blue-800"
-            : "text-gray-600 hover:text-gray-800"
-        )}
-      >
-        Summarization
-      </Link> */}
-      {user && (
+    <nav className="space-x-1 sm:space-x-2 md:space-x-3 lg:space-x-4 flex items-center relative">
+      {pathname === "/" && (
+        <>
+          <Link
+            href="/"
+            className="text-xs sm:text-sm font-medium text-primary"
+          >
+            Home
+          </Link>
+          <a
+            href="#about"
+            className="text-xs sm:text-sm font-medium text-slate-700 hover:text-primary dark:text-slate-300 dark:hover:text-primary"
+            onClick={handleNavClick("about")}
+          >
+            About Us
+          </a>
+          <a
+            href="#faq"
+            className="text-xs sm:text-sm font-medium text-slate-700 hover:text-primary dark:text-slate-300 dark:hover:text-primary"
+            onClick={handleNavClick("faq")}
+          >
+            FAQ
+          </a>
+          <a
+            href="#demo"
+            className="text-xs sm:text-sm font-medium text-slate-700 hover:text-primary dark:text-slate-300 dark:hover:text-primary"
+            onClick={handleNavClick("demo")}
+          >
+            Demo
+          </a>
+          <a
+            href="#contact"
+            className="text-xs sm:text-sm font-medium text-slate-700 hover:text-primary dark:text-slate-300 dark:hover:text-primary"
+            onClick={handleNavClick("contact")}
+          >
+            Contact Us
+          </a>
+        </>
+      )}
+      {!user ? (
+        <Link
+          href="/login"
+          className="text-xs sm:text-sm font-medium text-slate-700 hover:text-primary dark:text-slate-300 dark:hover:text-primary"
+        >
+          Login
+        </Link>
+      ) : (
         <div className="ml-4 relative" ref={dropdownRef}>
           <button
             className="focus:outline-none"

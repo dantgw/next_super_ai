@@ -250,7 +250,10 @@ export default function Home() {
 
       <main className="flex-grow">
         {/* Hero Section */}
-        <section className="relative flex flex-col items-center justify-center text-center min-h-[70vh] lg:min-h-[80vh] overflow-hidden bg-background">
+        <section
+          id="about"
+          className="relative flex flex-col items-center justify-center text-center min-h-[70vh] lg:min-h-[80vh] overflow-hidden bg-background"
+        >
           <div className="container mx-auto px-4 z-10 relative py-12 md:py-20">
             <h1 className="text-4xl md:text-5xl lg:text-6xl font-extrabold mb-6 text-slate-900 dark:text-slate-50">
               Beyond Transcriptions.
@@ -308,7 +311,7 @@ export default function Home() {
         </section>
 
         {/* Measurable Impact Section */}
-        <section className="py-12 md:py-16 bg-background">
+        <section id="about" className="py-12 md:py-16 bg-background">
           <div className="container mx-auto px-4">
             <div className="text-center mb-10 md:mb-12">
               <h2 className="text-3xl md:text-4xl font-bold mb-3 text-slate-900 dark:text-slate-50">
@@ -340,7 +343,7 @@ export default function Home() {
         </section>
 
         {/* Mission/Solution Section */}
-        <section className="py-12 md:py-16 bg-background">
+        <section id="faq" className="py-12 md:py-16 bg-background">
           <div className="container mx-auto px-4">
             <div className="text-center mb-10">
               <h3 className="text-2xl md:text-3xl font-semibold text-primary mb-3">
@@ -378,7 +381,7 @@ export default function Home() {
         </section>
 
         {/* Technology Stack Section */}
-        <section className="py-12 md:py-16 bg-background">
+        <section id="demo" className="py-12 md:py-16 bg-background">
           <div className="container mx-auto px-4">
             <div className="text-center mb-10">
               <span className="inline-block bg-orange-100 text-orange-700 dark:bg-orange-700 dark:text-orange-100 px-3 py-1 rounded-full text-xs font-semibold mb-3">
@@ -523,7 +526,10 @@ export default function Home() {
         </section>
 
         {/* Vision/Closing Section */}
-        <section className="py-16 md:py-24 text-center bg-background">
+        <section
+          id="contact"
+          className="py-16 md:py-24 text-center bg-background"
+        >
           <div className="container mx-auto px-4">
             <h3 className="text-3xl md:text-4xl font-bold mb-4">
               The Future of Healthcare is Inclusive.
