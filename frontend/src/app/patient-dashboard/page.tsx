@@ -6,6 +6,7 @@ import { supabase } from "../../lib/supabase";
 import { Navigation } from "../../components/Navigation";
 import Image from "next/image";
 import ConsultationSummaryCard from "../../components/ConsultationSummaryCard";
+import Link from "next/link";
 
 export default function PatientDashboardPage() {
   const [loading, setLoading] = useState(true);
@@ -45,14 +46,16 @@ export default function PatientDashboardPage() {
         <div className="max-w-7xl h-20 mx-auto py-6 px-4 sm:px-6 lg:px-8">
           <div className="flex h-full justify-between items-center">
             <div className="relative">
-              <Image
-                src="/health-reach-logo.png"
-                alt="Health Reach Logo"
-                height={48}
-                width={200}
-                priority
-                className="object-contain"
-              />
+              <Link href={"/"}>
+                <Image
+                  src="/health-reach-logo.png"
+                  alt="Health Reach Logo"
+                  height={48}
+                  width={200}
+                  priority
+                  className="object-contain"
+                />
+              </Link>
             </div>
             <Navigation />
           </div>
@@ -72,6 +75,8 @@ export default function PatientDashboardPage() {
                 <ConsultationSummaryCard
                   key={summary.id}
                   summary={summary.summary_text}
+                  translatedLanguage={summary.translated_language}
+                  translatedSummary={summary.translated_summary}
                 />
               ))
             )}

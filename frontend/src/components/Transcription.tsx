@@ -1141,7 +1141,12 @@ Generate the summary in markdown using the above structure, replacing the bracke
       </div>
 
       {/* Summary Card */}
-      {summaryResult && <ConsultationSummaryCard summary={summaryResult} />}
+      {summaryResult && (
+        <ConsultationSummaryCard
+          summary={summaryResult}
+          translatedLanguage={targetLanguage}
+        />
+      )}
 
       {/* Error display */}
       {error && (

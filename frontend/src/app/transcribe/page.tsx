@@ -5,6 +5,7 @@ import { supabase } from "../../lib/supabase";
 import { Transcription } from "../../components/Transcription";
 import { Navigation } from "../../components/Navigation";
 import Image from "next/image";
+import Link from "next/link";
 
 export default function TranscribePage() {
   const [loading, setLoading] = useState(true);
@@ -30,14 +31,16 @@ export default function TranscribePage() {
         <div className="max-w-7xl h-20 mx-auto py-6 px-4 sm:px-6 lg:px-8">
           <div className="flex h-full justify-between items-center">
             <div className=" relative">
-              <Image
-                src="/health-reach-logo.png"
-                alt="Health Reach Logo"
-                height={48}
-                width={200}
-                priority
-                className="object-contain"
-              />
+              <Link href={"/"}>
+                <Image
+                  src="/health-reach-logo.png"
+                  alt="Health Reach Logo"
+                  height={48}
+                  width={200}
+                  priority
+                  className="object-contain"
+                />
+              </Link>
             </div>
             <Navigation />
           </div>
