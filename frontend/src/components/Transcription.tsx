@@ -486,6 +486,11 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
     if (!audioUrl) return;
 
     try {
+      // Stop any active recording first
+      if (isRecording) {
+        await stopRecording();
+      }
+
       if (isPlayingAudio === segmentId) {
         audioRef.current?.pause();
         setIsPlayingAudio(null);
