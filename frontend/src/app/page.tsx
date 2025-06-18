@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import {
   ArrowRight,
   MessageSquareHeart,
@@ -68,11 +69,18 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-white">
       <header className="bg-white shadow">
-        <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center">
-            <h1 className="text-3xl font-bold text-gray-900">
-              Medical Transcription Assistant
-            </h1>
+            <Link href={"/"}>
+              <Image
+                src="/health-reach-logo.png"
+                alt="Health Reach Logo"
+                height={48}
+                width={200}
+                priority
+                className="object-contain"
+              />
+            </Link>
             <Navigation />
           </div>
         </div>

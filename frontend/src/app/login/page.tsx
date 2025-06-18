@@ -45,13 +45,15 @@ export default function Login() {
         {/* Logo and Header */}
         <div className="flex flex-col items-center">
           <div className="flex items-center gap-4">
-            <Image
-              src="/health-reach-logo.png"
-              alt="Health Reach Logo"
-              width={300}
-              height={100}
-              priority
-            />
+            <Link href={"/"}>
+              <Image
+                src="/health-reach-logo.png"
+                alt="Health Reach Logo"
+                width={300}
+                height={100}
+                priority
+              />
+            </Link>
           </div>
           <h2 className="mt-8 text-center text-2xl text-gray-600">
             Welcome. Please sign in to continue.
