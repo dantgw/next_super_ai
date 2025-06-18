@@ -14,16 +14,30 @@ import { TranslateTextCommand } from "@aws-sdk/client-translate";
 import { InvokeModelCommand } from "@aws-sdk/client-bedrock-runtime";
 import MicrophoneStream from "microphone-stream";
 import { Buffer } from "buffer";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
+import { Mic, StopCircle, Loader2 } from "lucide-react";
 
 interface TranscriptionProps {
   className?: string;
 }
 
 interface SpeakerSegment {
+  id: number;
   speaker: string;
   text: string;
   timestamp: number;
   language?: string;
+  translated?: string;
 }
 
 export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
@@ -38,22 +52,48 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
   const [enableSpeakerIdentification, setEnableSpeakerIdentification] =
     useState(false);
   const [primaryLanguage, setPrimaryLanguage] = useState("en-US");
+  const [sessionId, setSessionId] = useState<string>("");
+  const [currentTime, setCurrentTime] = useState<string>("");
 
   const microphoneStreamRef = useRef<MicrophoneStream | null>(null);
   const transcribeStreamRef = useRef<any>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const transcriptionRef = useRef<HTMLDivElement>(null);
-  const translationRef = useRef<HTMLDivElement>(null);
-  const speakerSegmentsRef = useRef<HTMLDivElement>(null);
+  const originalScrollAreaRef = useRef<HTMLDivElement>(null);
+  const translatedScrollAreaRef = useRef<HTMLDivElement>(null);
 
   const SAMPLE_RATE = 44100;
+
+  useEffect(() => {
+    setSessionId(
+      `SESSION_${Date.now()}_${Math.random()
+        .toString(36)
+        .substring(2, 9)
+        .toUpperCase()}`
+    );
+    const timer = setInterval(
+      () => setCurrentTime(new Date().toLocaleTimeString()),
+      1000
+    );
+    return () => clearInterval(timer);
+  }, []);
 
   // Auto-scroll to bottom when content updates
   const scrollToBottom = (ref: React.RefObject<HTMLDivElement | null>) => {
     if (ref.current) {
-      ref.current.scrollTop = ref.current.scrollHeight;
+      const scrollableViewport = ref.current.querySelector(
+        "div[data-radix-scroll-area-viewport]"
+      );
+      if (scrollableViewport)
+        scrollableViewport.scrollTop = scrollableViewport.scrollHeight;
     }
   };
+
+  useEffect(() => {
+    if (originalScrollAreaRef.current && translatedScrollAreaRef.current) {
+      scrollToBottom(originalScrollAreaRef);
+      scrollToBottom(translatedScrollAreaRef);
+    }
+  }, [speakerSegments]);
 
   // Encode PCM chunk for AWS Transcribe
   const encodePCMChunk = (chunk: any) => {
@@ -112,7 +152,8 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
                 // based on pauses and text patterns
                 if (enableSpeakerIdentification) {
                   const newSegment: SpeakerSegment = {
-                    speaker: `Speaker ${speakerSegments.length + 1}`, // Simple speaker numbering
+                    id: Date.now(),
+                    speaker: `Speaker ${(speakerSegments.length % 2) + 1}`, // Alternate between speakers
                     text: newTranscript,
                     timestamp: Date.now(),
                   };
@@ -129,13 +170,45 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
                       );
                     }
                   });
+
+                  // Translate the segment
+                  translateText(newTranscript).then((translatedText) => {
+                    if (translatedText) {
+                      setSpeakerSegments((prev) =>
+                        prev.map((seg) =>
+                          seg === newSegment
+                            ? { ...seg, translated: translatedText }
+                            : seg
+                        )
+                      );
+                    }
+                  });
                 } else {
-                  // Fallback to single speaker mode
-                  callback(newTranscript + " ");
+                  // Single speaker mode
+                  const newSegment: SpeakerSegment = {
+                    id: Date.now(),
+                    speaker: "Speaker",
+                    text: newTranscript,
+                    timestamp: Date.now(),
+                  };
+
+                  setSpeakerSegments((prev) => [...prev, newSegment]);
+
+                  // Translate the segment
+                  translateText(newTranscript).then((translatedText) => {
+                    if (translatedText) {
+                      setSpeakerSegments((prev) =>
+                        prev.map((seg) =>
+                          seg === newSegment
+                            ? { ...seg, translated: translatedText }
+                            : seg
+                        )
+                      );
+                    }
+                  });
                 }
 
-                // Process async operations without blocking the stream
-                translateText(newTranscript).catch(console.error);
+                // Process with Bedrock in background
                 processWithBedrock(newTranscript).catch(console.error);
               }
             }
@@ -228,12 +301,12 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
     }
   };
 
-  const translateText = async (text: string) => {
+  const translateText = async (text: string): Promise<string | undefined> => {
     try {
       // Only skip translation if both source and target are English
       const isEnglishToEnglish =
         primaryLanguage.startsWith("en") && targetLanguage === "en";
-      if (isEnglishToEnglish) return;
+      if (isEnglishToEnglish) return text;
 
       const translateCommand = new TranslateTextCommand({
         Text: text,
@@ -242,13 +315,10 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
       });
 
       const translatedResult = await translateClient.send(translateCommand);
-      if (translatedResult.TranslatedText) {
-        setTranslatedText(
-          (prev) => prev + " " + translatedResult.TranslatedText
-        );
-      }
+      return translatedResult.TranslatedText;
     } catch (err) {
       console.error("Translation error:", err);
+      return undefined;
     }
   };
 
@@ -311,248 +381,166 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
     setDebugInfo("");
   };
 
-  // Auto-scroll effects
-  useEffect(() => {
-    scrollToBottom(transcriptionRef);
-  }, [transcription]);
-
-  useEffect(() => {
-    scrollToBottom(translationRef);
-  }, [translatedText]);
-
-  useEffect(() => {
-    scrollToBottom(speakerSegmentsRef);
-  }, [speakerSegments]);
-
-  useEffect(() => {
-    return () => {
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach((track) => track.stop());
-      }
-      if (microphoneStreamRef.current) {
-        microphoneStreamRef.current.stop();
-      }
-    };
-  }, []);
-
   return (
-    <div className={`p-6 max-w-6xl mx-auto ${className}`}>
-      {/* Header with improved layout */}
-      <div className="mb-8">
-        <h2 className="text-2xl font-bold text-gray-800 mb-6 text-center">
-          Real-Time Transcription & Translation
-        </h2>
+    <div className="flex flex-col h-screen bg-background text-foreground">
+      <header className="p-4 border-b bg-background shadow-sm">
+        <h1 className="text-2xl font-semibold text-center text-primary">
+          Live Patient Transcript Viewer
+        </h1>
+      </header>
 
-        {/* Language settings in a grid layout */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-          <div className="bg-white p-4 rounded-lg shadow-sm border">
-            <label
+      {/* Control Bar */}
+      <div className="p-3 border-b bg-slate-100 dark:bg-slate-800 flex items-center justify-center space-x-4">
+        {!isRecording ? (
+          <Button onClick={startRecording} size="lg" disabled={isLoading}>
+            <Mic className="mr-2 h-5 w-5" /> Start Recording
+          </Button>
+        ) : (
+          <Button
+            onClick={stopRecording}
+            variant="destructive"
+            size="lg"
+            disabled={isLoading}
+          >
+            <StopCircle className="mr-2 h-5 w-5" /> Stop Recording
+          </Button>
+        )}
+        {isRecording && (
+          <div className="flex items-center text-red-500 animate-pulse">
+            <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+            <span>Recording...</span>
+          </div>
+        )}
+      </div>
+
+      <main className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-0 overflow-hidden">
+        {/* Original Language Column */}
+        <section className="flex flex-col border-r bg-background">
+          <div className="p-3 border-b border-slate-200 dark:border-slate-700">
+            <Label
               htmlFor="primaryLanguage"
-              className="block text-sm font-semibold text-gray-700 mb-2"
+              className="text-sm font-medium text-slate-700 dark:text-slate-300"
             >
-              Primary Language (for transcription)
-            </label>
-            <select
-              id="primaryLanguage"
-              className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+              Original Language
+            </Label>
+            <Select
               value={primaryLanguage}
-              onChange={(e) => setPrimaryLanguage(e.target.value)}
+              onValueChange={setPrimaryLanguage}
+              disabled={isRecording}
             >
-              <option value="en-US">English (US)</option>
-              <option value="es-US">Spanish (US)</option>
-              <option value="fr-FR">French</option>
-              <option value="de-DE">German</option>
-              <option value="it-IT">Italian</option>
-              <option value="pt-BR">Portuguese (Brazil)</option>
-              <option value="ja-JP">Japanese</option>
-              <option value="ko-KR">Korean</option>
-              <option value="zh-CN">Chinese (Simplified)</option>
-              <option value="ar-SA">Arabic</option>
-              <option value="hi-IN">Hindi</option>
-            </select>
+              <SelectTrigger id="primaryLanguage" className="mt-1 w-full">
+                <SelectValue placeholder="Select language" />
+              </SelectTrigger>
+              <SelectContent className="max-h-60">
+                <SelectItem value="en-US">English (US)</SelectItem>
+                <SelectItem value="es-US">Spanish (US)</SelectItem>
+                <SelectItem value="fr-FR">French</SelectItem>
+                <SelectItem value="de-DE">German</SelectItem>
+                <SelectItem value="it-IT">Italian</SelectItem>
+                <SelectItem value="pt-BR">Portuguese (Brazil)</SelectItem>
+                <SelectItem value="ja-JP">Japanese</SelectItem>
+                <SelectItem value="ko-KR">Korean</SelectItem>
+                <SelectItem value="zh-CN">Chinese (Simplified)</SelectItem>
+                <SelectItem value="ar-SA">Arabic</SelectItem>
+                <SelectItem value="hi-IN">Hindi</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
-
-          <div className="bg-white p-4 rounded-lg shadow-sm border">
-            <label
-              htmlFor="language"
-              className="block text-sm font-semibold text-gray-700 mb-2"
-            >
-              Target Language (for translation)
-            </label>
-            <select
-              id="language"
-              className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-              value={targetLanguage}
-              onChange={(e) => setTargetLanguage(e.target.value)}
-            >
-              {supportedLanguages.map((lang) => (
-                <option key={lang.code} value={lang.code}>
-                  {lang.name}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        {/* Speaker identification toggle */}
-        <div className="bg-white p-4 rounded-lg shadow-sm border mb-6">
-          <div className="flex items-center space-x-3">
-            <input
-              type="checkbox"
-              id="speakerIdentification"
-              checked={enableSpeakerIdentification}
-              onChange={(e) => setEnableSpeakerIdentification(e.target.checked)}
-              className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
-            />
-            <label
-              htmlFor="speakerIdentification"
-              className="text-sm font-medium text-gray-700"
-            >
-              Enable Speaker Identification (for multiple speakers)
-            </label>
-          </div>
-        </div>
-      </div>
-
-      {/* Control buttons */}
-      <div className="flex gap-4 mb-6">
-        <button
-          onClick={isRecording ? stopRecording : startRecording}
-          disabled={isLoading}
-          className={`flex-1 py-4 px-8 rounded-xl text-white font-semibold text-lg transition-all duration-200 ${
-            isLoading
-              ? "bg-gray-400 cursor-not-allowed"
-              : isRecording
-              ? "bg-red-500 hover:bg-red-600 shadow-lg hover:shadow-xl"
-              : "bg-blue-500 hover:bg-blue-600 shadow-lg hover:shadow-xl"
-          }`}
-        >
-          {isLoading
-            ? "Loading..."
-            : isRecording
-            ? "⏹️ Stop Recording"
-            : "🎤 Start Recording"}
-        </button>
-
-        <button
-          onClick={clearTranscription}
-          disabled={isLoading || isRecording}
-          className={`px-8 py-4 rounded-xl font-semibold text-lg transition-all duration-200 ${
-            isLoading || isRecording
-              ? "bg-gray-300 text-gray-500 cursor-not-allowed"
-              : "bg-gray-500 hover:bg-gray-600 text-white shadow-lg hover:shadow-xl"
-          }`}
-        >
-          🗑️ Clear
-        </button>
-      </div>
-
-      {/* Recording Status */}
-      {isRecording && (
-        <div className="mb-6 p-4 bg-green-50 border border-green-200 text-green-700 rounded-xl flex items-center">
-          <div className="w-4 h-4 bg-red-500 rounded-full mr-3 animate-pulse"></div>
-          <span className="font-medium">Recording in progress...</span>
-        </div>
-      )}
-
-      {/* Debug Info */}
-      <div className="mb-6 p-4 bg-gray-100 rounded-lg text-sm text-gray-700">
-        <strong>Debug Info:</strong> {debugInfo}
-      </div>
-
-      {/* Main content area with side-by-side layout */}
-      <div className="space-y-6">
-        {/* Speaker Segments Display */}
-        {enableSpeakerIdentification && speakerSegments.length > 0 && (
-          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-6 rounded-xl border border-blue-200">
-            <h3 className="font-semibold text-lg text-gray-800 mb-4 flex items-center">
-              <span className="mr-2">👥</span>
-              Speaker Segments
-            </h3>
-            <div
-              ref={speakerSegmentsRef}
-              className="space-y-3 max-h-64 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100"
-            >
-              {speakerSegments.map((segment, index) => (
+          <ScrollArea className="flex-1 p-4" ref={originalScrollAreaRef}>
+            <div className="space-y-3" aria-live="polite">
+              {speakerSegments.map((segment) => (
                 <div
-                  key={index}
-                  className="flex items-start space-x-3 bg-white p-3 rounded-lg shadow-sm"
+                  key={segment.id}
+                  className="p-2 rounded-md bg-card dark:bg-card shadow-sm"
                 >
-                  <span className="bg-blue-500 text-white px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap">
-                    {segment.speaker}
-                  </span>
-                  <div className="flex-1">
-                    <span className="text-gray-800">{segment.text}</span>
-                    {segment.language &&
-                      segment.language !== primaryLanguage && (
-                        <span className="ml-2 text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
-                          detected: {segment.language}
-                        </span>
-                      )}
-                  </div>
+                  {segment.speaker && (
+                    <span className="font-semibold text-sm text-primary mr-2">
+                      {segment.speaker}:
+                    </span>
+                  )}
+                  <p className="inline text-slate-800 dark:text-slate-200 leading-relaxed">
+                    {segment.text}
+                  </p>
                 </div>
               ))}
-            </div>
-          </div>
-        )}
-
-        {/* Transcription and Translation side by side */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Original Transcription */}
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-            <h3 className="font-semibold text-lg text-gray-800 mb-4 flex items-center">
-              <span className="mr-2">📝</span>
-              Original Transcription
-            </h3>
-            <div
-              ref={transcriptionRef}
-              className="bg-gray-50 p-4 rounded-lg h-64 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100"
-            >
-              <p className="whitespace-pre-wrap text-gray-800 leading-relaxed">
-                {transcription || "No transcription yet..."}
-              </p>
-            </div>
-          </div>
-
-          {/* Translation */}
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-            <h3 className="font-semibold text-lg text-gray-800 mb-4 flex items-center">
-              <span className="mr-2">🌐</span>
-              Translation
-              {targetLanguage !== "en" && (
-                <span className="ml-2 text-sm font-normal text-gray-500">
-                  (
-                  {
-                    supportedLanguages.find((l) => l.code === targetLanguage)
-                      ?.name
-                  }
-                  )
-                </span>
+              {!isRecording && speakerSegments.length === 0 && (
+                <p className="text-sm text-slate-500 dark:text-slate-400 italic">
+                  Press "Start Recording" to begin.
+                </p>
               )}
-            </h3>
-            <div
-              ref={translationRef}
-              className="bg-gray-50 p-4 rounded-lg h-64 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100"
-            >
-              <p className="whitespace-pre-wrap text-gray-800 leading-relaxed">
-                {translatedText
-                  ? translatedText
-                  : primaryLanguage.startsWith("en") && targetLanguage === "en"
-                  ? "Translation disabled (English to English)"
-                  : "No translation yet..."}
-              </p>
             </div>
-          </div>
-        </div>
+          </ScrollArea>
+        </section>
 
-        {/* Error display */}
-        {error && (
-          <div className="p-4 bg-red-50 border border-red-200 text-red-700 rounded-xl flex items-center">
-            <span className="mr-2">⚠️</span>
-            {error}
+        {/* Translated Language Column */}
+        <section className="flex flex-col bg-background">
+          <div className="p-3 border-b border-slate-200 dark:border-slate-700">
+            <Label
+              htmlFor="targetLanguage"
+              className="text-sm font-medium text-slate-700 dark:text-slate-300"
+            >
+              Translated Language
+            </Label>
+            <Select
+              value={targetLanguage}
+              onValueChange={setTargetLanguage}
+              disabled={isRecording}
+            >
+              <SelectTrigger id="targetLanguage" className="mt-1 w-full">
+                <SelectValue placeholder="Select language" />
+              </SelectTrigger>
+              <SelectContent className="max-h-60">
+                {supportedLanguages.map((lang) => (
+                  <SelectItem key={lang.code} value={lang.code}>
+                    {lang.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
-        )}
-      </div>
+          <ScrollArea className="flex-1 p-4" ref={translatedScrollAreaRef}>
+            <div className="space-y-3" aria-live="polite">
+              {speakerSegments.map((segment) => (
+                <div
+                  key={`trans-${segment.id}`}
+                  className="p-2 rounded-md bg-card dark:bg-card shadow-sm"
+                >
+                  {segment.speaker && (
+                    <span className="font-semibold text-sm text-primary mr-2">
+                      {segment.speaker}:
+                    </span>
+                  )}
+                  <p className="inline text-slate-800 dark:text-slate-200 leading-relaxed">
+                    {segment.translated || "Translation in progress..."}
+                  </p>
+                </div>
+              ))}
+              {!isRecording && speakerSegments.length === 0 && (
+                <p className="text-sm text-slate-500 dark:text-slate-400 italic">
+                  Translation will appear here.
+                </p>
+              )}
+            </div>
+          </ScrollArea>
+        </section>
+      </main>
+
+      <footer className="p-3 border-t text-xs text-center text-muted-foreground bg-background">
+        <span>Session ID: {sessionId}</span>
+        <Separator
+          orientation="vertical"
+          className="h-4 inline-block mx-2 bg-slate-300 dark:bg-slate-600"
+        />
+        <span>Current Time: {currentTime}</span>
+      </footer>
+
+      {/* Error display */}
+      {error && (
+        <div className="p-4 bg-red-50 border border-red-200 text-red-700 rounded-xl flex items-center fixed bottom-4 right-4">
+          <span className="mr-2">⚠️</span>
+          {error}
+        </div>
+      )}
     </div>
   );
 };
