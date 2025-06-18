@@ -30,6 +30,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Mic, StopCircle, Loader2, FileText, Volume2 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 
 interface TranscriptionProps {
   className?: string;
@@ -76,6 +77,9 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
   const translatedContentRef = useRef<HTMLDivElement>(null);
 
   const SAMPLE_RATE = 44100;
+
+  // Add auto-play state
+  const [autoPlayEnabled, setAutoPlayEnabled] = useState(false);
 
   useEffect(() => {
     setSessionId(
@@ -350,7 +354,17 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
   //   }
   // };
 
+  // Add function to check if audio is currently playing
+  const isAudioCurrentlyPlaying = () => isPlayingAudio !== null;
+
+  // Modify startProviderRecording
   const startProviderRecording = async () => {
+    // Prevent recording if audio is playing
+    if (isAudioCurrentlyPlaying()) {
+      setError("Please stop audio playback before starting recording");
+      return;
+    }
+
     if (activeRecorder === "patient") {
       await stopRecording();
     }
@@ -358,12 +372,19 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
     startRecording(primaryLanguage, "provider");
   };
 
+  // Modify startPatientRecording
   const startPatientRecording = async () => {
+    // Prevent recording if audio is playing
+    if (isAudioCurrentlyPlaying()) {
+      setError("Please stop audio playback before starting recording");
+      return;
+    }
+
     if (activeRecorder === "provider") {
       await stopRecording();
     }
     setActiveRecorder("patient");
-    startRecording(targetLanguage, "patient"); // Use the patient's selected language for transcription
+    startRecording(targetLanguage, "patient");
   };
 
   const stopRecording = async () => {
@@ -472,6 +493,14 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
       );
       const segmentWithAudio = { ...segment, audioUrl };
       setSpeakerSegments((prev) => [...prev, segmentWithAudio]);
+
+      // Auto-play the audio if enabled and it's a translation (right side)
+      if (autoPlayEnabled && segment.side === "right" && audioUrl) {
+        // Small delay to ensure the UI has updated
+        setTimeout(() => {
+          handlePlayAudio(segmentWithAudio.id, audioUrl);
+        }, 100);
+      }
     } catch (err) {
       console.error("Error adding segment with audio:", err);
       setSpeakerSegments((prev) => [...prev, segment]);
@@ -589,6 +618,34 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
       {/* Audio Input Section */}
       <div>
         <h2 className="text-2xl font-semibold text-center mb-6">Audio Input</h2>
+
+        {/* Settings Section */}
+        <div className="flex flex-col items-center space-y-4 mb-8">
+          {/* Auto-play Control */}
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id="auto-play"
+              checked={autoPlayEnabled}
+              onCheckedChange={(checked) =>
+                setAutoPlayEnabled(checked === true)
+              }
+              className="border-slate-300"
+            />
+            <label
+              htmlFor="auto-play"
+              className="text-sm text-slate-700 cursor-pointer select-none"
+            >
+              Auto-play translations
+            </label>
+          </div>
+
+          {autoPlayEnabled && (
+            <p className="text-xs text-slate-500 italic">
+              Translations will automatically play when received
+            </p>
+          )}
+        </div>
+
         <div className="grid grid-cols-2 gap-8">
           {/* Healthcare Provider */}
           <div className="flex flex-col items-center space-y-4">
@@ -626,14 +683,16 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
               variant={
                 activeRecorder === "provider" ? "destructive" : "outline"
               }
-              className="w-full max-w-xs bg-slate-800 text-white hover:bg-slate-700"
+              className="w-full max-w-xs bg-slate-800 text-white hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed"
               onClick={
                 activeRecorder === "provider"
                   ? stopRecording
                   : startProviderRecording
               }
               disabled={
-                isLoading || (isRecording && activeRecorder === "patient")
+                isLoading ||
+                (isRecording && activeRecorder === "patient") ||
+                isAudioCurrentlyPlaying()
               }
             >
               <Mic className="w-4 h-4 mr-2" />
@@ -679,14 +738,16 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
             </p>
             <Button
               variant={activeRecorder === "patient" ? "destructive" : "outline"}
-              className="w-full max-w-xs bg-slate-800 text-white hover:bg-slate-700"
+              className="w-full max-w-xs bg-slate-800 text-white hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed"
               onClick={
                 activeRecorder === "patient"
                   ? stopRecording
                   : startPatientRecording
               }
               disabled={
-                isLoading || (isRecording && activeRecorder === "provider")
+                isLoading ||
+                (isRecording && activeRecorder === "provider") ||
+                isAudioCurrentlyPlaying()
               }
             >
               <Mic className="w-4 h-4 mr-2" />
