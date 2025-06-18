@@ -1,10 +1,14 @@
 "use client";
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useLayoutEffect } from "react";
 import {
   transcribeClient,
   translateClient,
   bedrockClient,
-  supportedLanguages,
+  pollyClient,
+  transcribeLanguages,
+  translateLanguages,
+  speakerLabels,
+  pollyVoices,
 } from "../config/aws-config";
 import {
   StartStreamTranscriptionCommand,
@@ -12,25 +16,44 @@ import {
 } from "@aws-sdk/client-transcribe-streaming";
 import { TranslateTextCommand } from "@aws-sdk/client-translate";
 import { InvokeModelCommand } from "@aws-sdk/client-bedrock-runtime";
+import { SynthesizeSpeechCommand } from "@aws-sdk/client-polly";
 import MicrophoneStream from "microphone-stream";
 import { Buffer } from "buffer";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
+import { Mic, StopCircle, Loader2, FileText, Volume2 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 
 interface TranscriptionProps {
   className?: string;
 }
 
 interface SpeakerSegment {
-  speaker: string;
+  id: number;
+  speaker: "Doctor" | "Patient";
   text: string;
   timestamp: number;
   language?: string;
+  side: "left" | "right";
+  audioUrl?: string | null;
 }
+
+// Add type for supported language codes
+type SupportedLanguageCode = keyof typeof speakerLabels;
 
 export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
   const [isRecording, setIsRecording] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [transcription, setTranscription] = useState("");
-  const [targetLanguage, setTargetLanguage] = useState("en");
+  const [targetLanguage, setTargetLanguage] = useState("zh-CN");
   const [translatedText, setTranslatedText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [debugInfo, setDebugInfo] = useState<string>("");
@@ -38,22 +61,96 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
   const [enableSpeakerIdentification, setEnableSpeakerIdentification] =
     useState(false);
   const [primaryLanguage, setPrimaryLanguage] = useState("en-US");
+  const [sessionId, setSessionId] = useState<string>("");
+  const [activeRecorder, setActiveRecorder] = useState<
+    "provider" | "patient" | null
+  >(null);
+  const [isPlayingAudio, setIsPlayingAudio] = useState<number | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const microphoneStreamRef = useRef<MicrophoneStream | null>(null);
   const transcribeStreamRef = useRef<any>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const transcriptionRef = useRef<HTMLDivElement>(null);
-  const translationRef = useRef<HTMLDivElement>(null);
-  const speakerSegmentsRef = useRef<HTMLDivElement>(null);
+  const originalScrollAreaRef = useRef<HTMLDivElement>(null);
+  const translatedScrollAreaRef = useRef<HTMLDivElement>(null);
+  const originalContentRef = useRef<HTMLDivElement>(null);
+  const translatedContentRef = useRef<HTMLDivElement>(null);
 
   const SAMPLE_RATE = 44100;
 
-  // Auto-scroll to bottom when content updates
+  // Add auto-play state
+  const [autoPlayEnabled, setAutoPlayEnabled] = useState(false);
+
+  useEffect(() => {
+    setSessionId(
+      `SESSION_${Date.now()}_${Math.random()
+        .toString(36)
+        .substring(2, 9)
+        .toUpperCase()}`
+    );
+  }, []);
+
   const scrollToBottom = (ref: React.RefObject<HTMLDivElement | null>) => {
     if (ref.current) {
-      ref.current.scrollTop = ref.current.scrollHeight;
+      const viewport = ref.current.querySelector(
+        '[data-radix-scroll-area-viewport=""]'
+      ) as HTMLElement;
+      if (viewport) {
+        viewport.scrollTo({
+          top: viewport.scrollHeight,
+          behavior: "smooth",
+        });
+      }
     }
   };
+
+  useLayoutEffect(() => {
+    if (speakerSegments.length > 0) {
+      scrollToBottom(originalScrollAreaRef);
+      scrollToBottom(translatedScrollAreaRef);
+    }
+  }, [speakerSegments]);
+
+  // Auto-scroll setup using MutationObserver
+  useEffect(() => {
+    const setupAutoScroll = (
+      contentRef: React.RefObject<HTMLDivElement | null>,
+      scrollAreaRef: React.RefObject<HTMLDivElement | null>
+    ) => {
+      const content = contentRef.current;
+      const scrollArea = scrollAreaRef.current;
+
+      if (!content || !scrollArea) return undefined;
+
+      const observer = new MutationObserver(() => {
+        const viewport = scrollArea.querySelector(
+          '[data-radix-scroll-area-viewport=""]'
+        );
+        if (viewport) {
+          viewport.scrollTop = viewport.scrollHeight;
+        }
+      });
+
+      observer.observe(content, {
+        childList: true,
+        subtree: true,
+        characterData: true,
+      });
+
+      return () => observer.disconnect();
+    };
+
+    const cleanup1 = setupAutoScroll(originalContentRef, originalScrollAreaRef);
+    const cleanup2 = setupAutoScroll(
+      translatedContentRef,
+      translatedScrollAreaRef
+    );
+
+    return () => {
+      cleanup1?.();
+      cleanup2?.();
+    };
+  }, []);
 
   // Encode PCM chunk for AWS Transcribe
   const encodePCMChunk = (chunk: any) => {
@@ -83,111 +180,11 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
     }
   };
 
-  // Start streaming transcription with speaker identification
-  const startStreaming = async (callback: (text: string) => void) => {
-    const command = new StartStreamTranscriptionCommand({
-      LanguageCode: primaryLanguage as any,
-      MediaEncoding: "pcm",
-      MediaSampleRateHertz: SAMPLE_RATE,
-      AudioStream: getAudioStream(),
-    });
-
-    const data = await transcribeClient.send(command);
-    transcribeStreamRef.current = data;
-
-    if (data.TranscriptResultStream) {
-      // Use a separate async function to handle the stream without blocking
-      const processStream = async () => {
-        try {
-          for await (const event of data.TranscriptResultStream!) {
-            const results = event.TranscriptEvent?.Transcript?.Results;
-            if (results && results.length && !results[0]?.IsPartial) {
-              const result = results[0];
-              const newTranscript = result.Alternatives?.[0]?.Transcript;
-
-              if (newTranscript) {
-                console.log("New transcript:", newTranscript);
-
-                // For now, we'll use a simple approach to detect speaker changes
-                // based on pauses and text patterns
-                if (enableSpeakerIdentification) {
-                  const newSegment: SpeakerSegment = {
-                    speaker: `Speaker ${speakerSegments.length + 1}`, // Simple speaker numbering
-                    text: newTranscript,
-                    timestamp: Date.now(),
-                  };
-
-                  setSpeakerSegments((prev) => [...prev, newSegment]);
-
-                  // Try to detect language for this segment
-                  detectLanguage(newTranscript).then((language) => {
-                    if (language && language !== primaryLanguage) {
-                      setSpeakerSegments((prev) =>
-                        prev.map((seg) =>
-                          seg === newSegment ? { ...seg, language } : seg
-                        )
-                      );
-                    }
-                  });
-                } else {
-                  // Fallback to single speaker mode
-                  callback(newTranscript + " ");
-                }
-
-                // Process async operations without blocking the stream
-                translateText(newTranscript).catch(console.error);
-                processWithBedrock(newTranscript).catch(console.error);
-              }
-            }
-          }
-        } catch (error) {
-          console.error("Stream processing error:", error);
-          if (isRecording) {
-            setError("Transcription stream error. Please try again.");
-            setIsRecording(false);
-          }
-        }
-      };
-
-      // Start processing the stream in the background
-      processStream();
-    }
-  };
-
-  // Detect language for a text segment
-  const detectLanguage = async (text: string): Promise<string | null> => {
-    try {
-      // For now, we'll use a simple heuristic approach
-      // In a production app, you might want to use AWS Comprehend for language detection
-      const nonLatinPattern = /[^\u0000-\u007F]/;
-      if (nonLatinPattern.test(text)) {
-        // This is a very basic heuristic - you'd want more sophisticated detection
-        return "auto";
-      }
-      return null;
-    } catch (error) {
-      console.error("Language detection error:", error);
-      return null;
-    }
-  };
-
-  // Create microphone stream
-  const createMicrophoneStream = async () => {
-    microphoneStreamRef.current = new MicrophoneStream();
-    const stream = await window.navigator.mediaDevices.getUserMedia({
-      video: false,
-      audio: {
-        sampleRate: SAMPLE_RATE,
-        channelCount: 1,
-        echoCancellation: true,
-        noiseSuppression: true,
-      },
-    });
-    streamRef.current = stream;
-    microphoneStreamRef.current.setStream(stream);
-  };
-
-  const startRecording = async () => {
+  // Start streaming transcription
+  const startRecording = async (
+    languageCode: string,
+    recorder: "provider" | "patient"
+  ) => {
     try {
       setError(null);
       setIsLoading(true);
@@ -199,20 +196,90 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
         stopRecording();
       }
 
-      // Clear previous segments
-      setSpeakerSegments([]);
-
       // Create microphone stream
       await createMicrophoneStream();
       setDebugInfo("Microphone stream created, starting transcription...");
 
-      // Start transcription streaming (non-blocking)
-      startStreaming((text) => {
-        setTranscription((prev) => prev + text);
-        setDebugInfo(`Transcription: ${text}`);
+      // Start transcription streaming
+      const command = new StartStreamTranscriptionCommand({
+        LanguageCode: languageCode as any,
+        MediaEncoding: "pcm",
+        MediaSampleRateHertz: SAMPLE_RATE,
+        AudioStream: getAudioStream(),
       });
 
-      // Set recording state after successful setup
+      const data = await transcribeClient.send(command);
+      transcribeStreamRef.current = data;
+
+      if (data.TranscriptResultStream) {
+        // Use a separate async function to handle the stream without blocking
+        const processStream = async () => {
+          try {
+            for await (const event of data.TranscriptResultStream!) {
+              const results = event.TranscriptEvent?.Transcript?.Results;
+              if (results && results.length && !results[0]?.IsPartial) {
+                const result = results[0];
+                const newTranscript = result.Alternatives?.[0]?.Transcript;
+
+                if (newTranscript) {
+                  console.log("New transcript received:", newTranscript);
+                  console.log(
+                    "Current languages - Primary:",
+                    primaryLanguage,
+                    "Target:",
+                    targetLanguage
+                  );
+
+                  const isProviderSpeaking = recorder === "provider";
+                  console.log("Is provider speaking:", isProviderSpeaking);
+
+                  const newSegment: SpeakerSegment = {
+                    id: Date.now(),
+                    speaker: isProviderSpeaking ? "Doctor" : "Patient",
+                    text: newTranscript,
+                    timestamp: Date.now(),
+                    language: isProviderSpeaking
+                      ? primaryLanguage
+                      : targetLanguage,
+                    side: isProviderSpeaking ? "left" : "right",
+                  };
+
+                  // Add original segment immediately
+                  await addSegmentWithAudio(newSegment);
+                  console.log(
+                    "Added original segment to",
+                    isProviderSpeaking ? "left" : "right"
+                  );
+
+                  // Handle translation asynchronously without blocking
+                  const sourceCode = isProviderSpeaking
+                    ? primaryLanguage.split("-")[0]
+                    : targetLanguage.split("-")[0];
+                  const targetCode = isProviderSpeaking
+                    ? targetLanguage.split("-")[0]
+                    : primaryLanguage.split("-")[0];
+
+                  // Start translation without awaiting
+                  await handleTranslation(newTranscript, isProviderSpeaking);
+                }
+              }
+            }
+          } catch (error) {
+            console.error("Stream processing error:", error);
+            if (isRecording) {
+              setError("Transcription stream error. Please try again.");
+              setIsRecording(false);
+            }
+          }
+        };
+
+        // Start processing the stream in the background
+        processStream().catch((error) => {
+          console.error("Process stream error:", error);
+          setError("Failed to process audio stream. Please try again.");
+        });
+      }
+
       setIsRecording(true);
       setIsLoading(false);
       setDebugInfo("Recording started successfully");
@@ -228,50 +295,99 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
     }
   };
 
-  const translateText = async (text: string) => {
+  const getTranslateLanguageCode = (transcribeCode: string): string => {
+    // Convert transcribe language code (e.g., "en-US") to translate code (e.g., "en")
+    return transcribeCode.split("-")[0];
+  };
+
+  const translateText = async (
+    text: string,
+    fromLang: string,
+    toLang: string
+  ): Promise<string | undefined> => {
     try {
-      // Only skip translation if both source and target are English
-      const isEnglishToEnglish =
-        primaryLanguage.startsWith("en") && targetLanguage === "en";
-      if (isEnglishToEnglish) return;
+      console.log("Starting translation from", fromLang, "to", toLang);
+
+      // Get the base language codes for translation
+      const sourceCode = fromLang.split("-")[0];
+      const targetCode = toLang.split("-")[0];
+
+      // Skip translation if languages are the same
+      if (sourceCode === targetCode) {
+        console.log("Same language, skipping translation");
+        return text;
+      }
 
       const translateCommand = new TranslateTextCommand({
         Text: text,
-        SourceLanguageCode: primaryLanguage.split("-")[0], // e.g., 'en-US' -> 'en'
-        TargetLanguageCode: targetLanguage,
+        SourceLanguageCode: sourceCode,
+        TargetLanguageCode: targetCode,
       });
 
+      console.log("Sending translation request");
       const translatedResult = await translateClient.send(translateCommand);
-      if (translatedResult.TranslatedText) {
-        setTranslatedText(
-          (prev) => prev + " " + translatedResult.TranslatedText
-        );
-      }
+      console.log("Translation completed:", translatedResult.TranslatedText);
+
+      return translatedResult.TranslatedText;
     } catch (err) {
-      console.error("Translation error:", err);
+      console.error("Translation error in translateText function:", err);
+      throw err;
     }
   };
 
-  const processWithBedrock = async (text: string) => {
-    try {
-      const bedrockCommand = new InvokeModelCommand({
-        modelId: "anthropic.claude-v2",
-        body: JSON.stringify({
-          prompt: `\n\nHuman: Please analyze this medical transcription and provide any relevant medical context or corrections: "${text}"\n\nAssistant:`,
-          max_tokens_to_sample: 500,
-          temperature: 0.7,
-        }),
-        contentType: "application/json",
-      });
+  // const processWithBedrock = async (text: string) => {
+  //   try {
+  //     const bedrockCommand = new InvokeModelCommand({
+  //       modelId: "anthropic.claude-v2",
+  //       body: JSON.stringify({
+  //         prompt: `\n\nHuman: Please analyze this medical transcription and provide any relevant medical context or corrections: "${text}"\n\nAssistant:`,
+  //         max_tokens_to_sample: 500,
+  //         temperature: 0.7,
+  //       }),
+  //       contentType: "application/json",
+  //     });
 
-      const llmResponse = await bedrockClient.send(bedrockCommand);
-      console.log("LLM response:", llmResponse);
-    } catch (err) {
-      console.error("Bedrock error:", err);
+  //     const llmResponse = await bedrockClient.send(bedrockCommand);
+  //     console.log("LLM response:", llmResponse);
+  //   } catch (err) {
+  //     console.error("Bedrock error:", err);
+  //   }
+  // };
+
+  // Add function to check if audio is currently playing
+  const isAudioCurrentlyPlaying = () => isPlayingAudio !== null;
+
+  // Modify startProviderRecording
+  const startProviderRecording = async () => {
+    // Prevent recording if audio is playing
+    if (isAudioCurrentlyPlaying()) {
+      setError("Please stop audio playback before starting recording");
+      return;
     }
+
+    if (activeRecorder === "patient") {
+      await stopRecording();
+    }
+    setActiveRecorder("provider");
+    startRecording(primaryLanguage, "provider");
   };
 
-  const stopRecording = () => {
+  // Modify startPatientRecording
+  const startPatientRecording = async () => {
+    // Prevent recording if audio is playing
+    if (isAudioCurrentlyPlaying()) {
+      setError("Please stop audio playback before starting recording");
+      return;
+    }
+
+    if (activeRecorder === "provider") {
+      await stopRecording();
+    }
+    setActiveRecorder("patient");
+    startRecording(targetLanguage, "patient");
+  };
+
+  const stopRecording = async () => {
     try {
       console.log("Stopping recording...");
       setDebugInfo("Stopping recording...");
@@ -293,6 +409,7 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
       }
 
       setIsRecording(false);
+      setActiveRecorder(null);
       setIsLoading(false);
       setDebugInfo("Recording stopped");
       console.log("Recording stopped successfully");
@@ -311,248 +428,444 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
     setDebugInfo("");
   };
 
-  // Auto-scroll effects
-  useEffect(() => {
-    scrollToBottom(transcriptionRef);
-  }, [transcription]);
+  const handleEndConsultation = () => {
+    stopRecording();
+    // Additional end consultation logic here
+  };
 
-  useEffect(() => {
-    scrollToBottom(translationRef);
-  }, [translatedText]);
+  const createMicrophoneStream = async () => {
+    microphoneStreamRef.current = new MicrophoneStream();
+    const stream = await window.navigator.mediaDevices.getUserMedia({
+      video: false,
+      audio: {
+        sampleRate: SAMPLE_RATE,
+        channelCount: 1,
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      },
+    });
+    streamRef.current = stream;
+    microphoneStreamRef.current.setStream(stream);
+  };
 
-  useEffect(() => {
-    scrollToBottom(speakerSegmentsRef);
-  }, [speakerSegments]);
+  // Get speaker label based on language
+  const getSpeakerLabel = (speaker: "Doctor" | "Patient", language: string) => {
+    const languageCode = language as SupportedLanguageCode;
+    const labels = speakerLabels[languageCode] || speakerLabels["en-US"];
+    return speaker === "Doctor" ? labels.doctor : labels.patient;
+  };
 
-  useEffect(() => {
-    return () => {
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach((track) => track.stop());
+  // Add synthesizeSpeech function
+  const synthesizeSpeech = async (text: string, languageCode: string) => {
+    try {
+      const voice = pollyVoices[languageCode as keyof typeof pollyVoices];
+
+      const command = new SynthesizeSpeechCommand({
+        Text: text,
+        VoiceId: voice as any,
+        OutputFormat: "mp3",
+        Engine: "neural",
+      });
+
+      const response = await pollyClient.send(command);
+
+      if (response.AudioStream) {
+        const blob = new Blob(
+          [await response.AudioStream.transformToByteArray()],
+          { type: "audio/mpeg" }
+        );
+        return URL.createObjectURL(blob);
       }
-      if (microphoneStreamRef.current) {
-        microphoneStreamRef.current.stop();
+      return null;
+    } catch (err) {
+      console.error("Error synthesizing speech:", err);
+      return null;
+    }
+  };
+
+  // Modify the existing code where we add segments to include audio synthesis
+  const addSegmentWithAudio = async (segment: SpeakerSegment) => {
+    try {
+      const audioUrl = await synthesizeSpeech(
+        segment.text,
+        segment.language || primaryLanguage
+      );
+      const segmentWithAudio = { ...segment, audioUrl };
+      setSpeakerSegments((prev) => [...prev, segmentWithAudio]);
+
+      // Auto-play the audio if enabled and it's a translation (right side)
+      if (autoPlayEnabled && segment.side === "right" && audioUrl) {
+        // Small delay to ensure the UI has updated
+        setTimeout(() => {
+          handlePlayAudio(segmentWithAudio.id, audioUrl);
+        }, 100);
       }
-    };
-  }, []);
+    } catch (err) {
+      console.error("Error adding segment with audio:", err);
+      setSpeakerSegments((prev) => [...prev, segment]);
+    }
+  };
+
+  // Add audio playback control
+  const handlePlayAudio = async (
+    segmentId: number,
+    audioUrl: string | null | undefined
+  ) => {
+    if (!audioUrl) return;
+
+    try {
+      // Stop any active recording first
+      if (isRecording) {
+        await stopRecording();
+      }
+
+      if (isPlayingAudio === segmentId) {
+        audioRef.current?.pause();
+        setIsPlayingAudio(null);
+        return;
+      }
+
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
+
+      const audio = new Audio(audioUrl);
+      audioRef.current = audio;
+
+      audio.onended = () => {
+        setIsPlayingAudio(null);
+      };
+
+      audio.play();
+      setIsPlayingAudio(segmentId);
+    } catch (err) {
+      console.error("Error playing audio:", err);
+      setError("Failed to play audio");
+    }
+  };
+
+  // Modify the translation handling code
+  const handleTranslation = async (
+    newTranscript: string,
+    isProviderSpeaking: boolean
+  ) => {
+    const sourceCode = isProviderSpeaking
+      ? primaryLanguage.split("-")[0]
+      : targetLanguage.split("-")[0];
+    const targetCode = isProviderSpeaking
+      ? targetLanguage.split("-")[0]
+      : primaryLanguage.split("-")[0];
+
+    try {
+      const translatedText = await translateText(
+        newTranscript,
+        sourceCode,
+        targetCode
+      );
+      if (translatedText) {
+        const translatedSegment: SpeakerSegment = {
+          id: Date.now(),
+          speaker: isProviderSpeaking ? "Doctor" : "Patient",
+          text: translatedText,
+          timestamp: Date.now(),
+          language: isProviderSpeaking ? targetLanguage : primaryLanguage,
+          side: isProviderSpeaking ? "right" : "left",
+        };
+        await addSegmentWithAudio(translatedSegment);
+      }
+    } catch (error) {
+      console.error("Translation error:", error);
+      setError("Translation failed. Please try again.");
+    }
+  };
+
+  // Update the segment rendering in the return statement to include audio playback buttons
+  const renderSegment = (segment: SpeakerSegment) => (
+    <div key={segment.id} className="space-y-2 bg-slate-50 p-4 rounded-lg">
+      <div className="flex flex-col gap-2">
+        <div className="flex justify-between items-center">
+          <span className="text-sm font-semibold text-slate-700">
+            {getSpeakerLabel(
+              segment.speaker,
+              segment.language || primaryLanguage
+            )}
+          </span>
+          {segment.audioUrl && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => handlePlayAudio(segment.id, segment.audioUrl)}
+              className={
+                isPlayingAudio === segment.id
+                  ? "text-blue-600"
+                  : "text-gray-600"
+              }
+            >
+              <Volume2 className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
+        <p className="text-base leading-relaxed text-gray-900">
+          {segment.text}
+        </p>
+      </div>
+    </div>
+  );
 
   return (
-    <div className={`p-6 max-w-6xl mx-auto ${className}`}>
-      {/* Header with improved layout */}
-      <div className="mb-8">
-        <h2 className="text-2xl font-bold text-gray-800 mb-6 text-center">
-          Real-Time Transcription & Translation
-        </h2>
+    <div className="flex flex-col space-y-8 p-8 max-w-7xl mx-auto">
+      {/* Audio Input Section */}
+      <div>
+        <h2 className="text-2xl font-semibold text-center mb-6">Audio Input</h2>
 
-        {/* Language settings in a grid layout */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-          <div className="bg-white p-4 rounded-lg shadow-sm border">
-            <label
-              htmlFor="primaryLanguage"
-              className="block text-sm font-semibold text-gray-700 mb-2"
-            >
-              Primary Language (for transcription)
-            </label>
-            <select
-              id="primaryLanguage"
-              className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-              value={primaryLanguage}
-              onChange={(e) => setPrimaryLanguage(e.target.value)}
-            >
-              <option value="en-US">English (US)</option>
-              <option value="es-US">Spanish (US)</option>
-              <option value="fr-FR">French</option>
-              <option value="de-DE">German</option>
-              <option value="it-IT">Italian</option>
-              <option value="pt-BR">Portuguese (Brazil)</option>
-              <option value="ja-JP">Japanese</option>
-              <option value="ko-KR">Korean</option>
-              <option value="zh-CN">Chinese (Simplified)</option>
-              <option value="ar-SA">Arabic</option>
-              <option value="hi-IN">Hindi</option>
-            </select>
-          </div>
-
-          <div className="bg-white p-4 rounded-lg shadow-sm border">
-            <label
-              htmlFor="language"
-              className="block text-sm font-semibold text-gray-700 mb-2"
-            >
-              Target Language (for translation)
-            </label>
-            <select
-              id="language"
-              className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-              value={targetLanguage}
-              onChange={(e) => setTargetLanguage(e.target.value)}
-            >
-              {supportedLanguages.map((lang) => (
-                <option key={lang.code} value={lang.code}>
-                  {lang.name}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        {/* Speaker identification toggle */}
-        <div className="bg-white p-4 rounded-lg shadow-sm border mb-6">
-          <div className="flex items-center space-x-3">
-            <input
-              type="checkbox"
-              id="speakerIdentification"
-              checked={enableSpeakerIdentification}
-              onChange={(e) => setEnableSpeakerIdentification(e.target.checked)}
-              className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
+        {/* Settings Section */}
+        <div className="flex flex-col items-center space-y-4 mb-8">
+          {/* Auto-play Control */}
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id="auto-play"
+              checked={autoPlayEnabled}
+              onCheckedChange={(checked) =>
+                setAutoPlayEnabled(checked === true)
+              }
+              className="border-slate-300"
             />
             <label
-              htmlFor="speakerIdentification"
-              className="text-sm font-medium text-gray-700"
+              htmlFor="auto-play"
+              className="text-sm text-slate-700 cursor-pointer select-none"
             >
-              Enable Speaker Identification (for multiple speakers)
+              Auto-play translations
             </label>
           </div>
+
+          {autoPlayEnabled && (
+            <p className="text-xs text-slate-500 italic">
+              Translations will automatically play when received
+            </p>
+          )}
+        </div>
+
+        <div className="grid grid-cols-2 gap-8">
+          {/* Healthcare Provider */}
+          <div className="flex flex-col items-center space-y-4">
+            <div className="text-center">
+              <span className="text-4xl">👨‍⚕️</span>
+              <h3 className="mt-2 font-medium">Healthcare Provider</h3>
+            </div>
+            <div className="relative w-24 h-24">
+              <div
+                className={`absolute inset-0 rounded-full  ${
+                  activeRecorder === "provider"
+                    ? "bg-red-500/20"
+                    : "bg-green-500/20"
+                }`}
+              ></div>
+              <div
+                className={`absolute inset-2 rounded-full  ${
+                  activeRecorder === "provider"
+                    ? "bg-red-500/30"
+                    : "bg-green-500/30"
+                }`}
+              ></div>
+              <div
+                className={`absolute inset-4 rounded-full transition-colors ${
+                  activeRecorder === "provider" ? "bg-red-500" : "bg-green-500"
+                }`}
+              ></div>
+            </div>
+            <p className="text-gray-600">
+              {activeRecorder === "provider"
+                ? "Recording..."
+                : "Ready to record"}
+            </p>
+            <Button
+              variant={
+                activeRecorder === "provider" ? "destructive" : "outline"
+              }
+              className="w-full max-w-xs bg-slate-800 text-white hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              onClick={
+                activeRecorder === "provider"
+                  ? stopRecording
+                  : startProviderRecording
+              }
+              disabled={
+                isLoading ||
+                (isRecording && activeRecorder === "patient") ||
+                isAudioCurrentlyPlaying()
+              }
+            >
+              <Mic className="w-4 h-4 mr-2" />
+              {activeRecorder === "provider"
+                ? "Stop Recording"
+                : "Start Recording"}
+            </Button>
+          </div>
+
+          {/* Patient/Caregiver */}
+          <div className="flex flex-col items-center space-y-4">
+            <div className="text-center">
+              <span className="text-4xl">🤒</span>
+              <h3 className="mt-2 font-medium">Patient/Caregiver</h3>
+            </div>
+            <div className="relative w-24 h-24">
+              {/* <div className="absolute inset-0 rounded-full bg-green-500/20"></div> */}
+              <div
+                className={`absolute inset-0 rounded-full  ${
+                  activeRecorder === "patient"
+                    ? "bg-red-500/20"
+                    : "bg-green-500/20"
+                }`}
+              ></div>
+              <div
+                className={`absolute inset-2 rounded-full  ${
+                  activeRecorder === "patient"
+                    ? "bg-red-500/30"
+                    : "bg-green-500/30"
+                }`}
+              ></div>
+              {/* <div className="absolute inset-2 rounded-full bg-green-500/30"></div> */}
+              <div
+                className={`absolute inset-4 rounded-full transition-colors ${
+                  activeRecorder === "patient" ? "bg-red-500" : "bg-green-500"
+                }`}
+              ></div>
+            </div>
+            <p className="text-gray-600">
+              {activeRecorder === "patient"
+                ? "Recording..."
+                : "Ready to record"}
+            </p>
+            <Button
+              variant={activeRecorder === "patient" ? "destructive" : "outline"}
+              className="w-full max-w-xs bg-slate-800 text-white hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              onClick={
+                activeRecorder === "patient"
+                  ? stopRecording
+                  : startPatientRecording
+              }
+              disabled={
+                isLoading ||
+                (isRecording && activeRecorder === "provider") ||
+                isAudioCurrentlyPlaying()
+              }
+            >
+              <Mic className="w-4 h-4 mr-2" />
+              {activeRecorder === "patient"
+                ? "Stop Recording"
+                : "Start Recording"}
+            </Button>
+          </div>
         </div>
       </div>
 
-      {/* Control buttons */}
-      <div className="flex gap-4 mb-6">
-        <button
-          onClick={isRecording ? stopRecording : startRecording}
-          disabled={isLoading}
-          className={`flex-1 py-4 px-8 rounded-xl text-white font-semibold text-lg transition-all duration-200 ${
-            isLoading
-              ? "bg-gray-400 cursor-not-allowed"
-              : isRecording
-              ? "bg-red-500 hover:bg-red-600 shadow-lg hover:shadow-xl"
-              : "bg-blue-500 hover:bg-blue-600 shadow-lg hover:shadow-xl"
-          }`}
-        >
-          {isLoading
-            ? "Loading..."
-            : isRecording
-            ? "⏹️ Stop Recording"
-            : "🎤 Start Recording"}
-        </button>
+      {/* Real-time Transcript Section */}
+      <div>
+        <h2 className="text-2xl font-semibold text-center mb-6">
+          Real-time Transcript
+        </h2>
+        <div className="grid grid-cols-2 gap-8">
+          {/* Provider's View */}
+          <div className="flex flex-col space-y-4">
+            <div className="flex items-center space-x-2">
+              <span className="text-lg">🎙️</span>
+              <h3>Provider's View</h3>
+            </div>
+            <Select
+              value={primaryLanguage}
+              onValueChange={setPrimaryLanguage}
+              disabled={isRecording}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select language" />
+              </SelectTrigger>
+              <SelectContent>
+                {transcribeLanguages.map((lang) => (
+                  <SelectItem key={lang.code} value={lang.code}>
+                    {lang.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <ScrollArea
+              className="h-[500px] border rounded-lg bg-white p-6"
+              ref={originalScrollAreaRef}
+            >
+              <div className="space-y-6" ref={originalContentRef}>
+                {speakerSegments.length === 0 ? (
+                  <p className="text-gray-500 text-center">
+                    Press "Start Recording" for Provider or Patient.
+                  </p>
+                ) : (
+                  speakerSegments
+                    .filter((segment) => segment.side === "left")
+                    .map(renderSegment)
+                )}
+              </div>
+            </ScrollArea>
+          </div>
 
-        <button
-          onClick={clearTranscription}
-          disabled={isLoading || isRecording}
-          className={`px-8 py-4 rounded-xl font-semibold text-lg transition-all duration-200 ${
-            isLoading || isRecording
-              ? "bg-gray-300 text-gray-500 cursor-not-allowed"
-              : "bg-gray-500 hover:bg-gray-600 text-white shadow-lg hover:shadow-xl"
-          }`}
-        >
-          🗑️ Clear
-        </button>
+          {/* Patient's View */}
+          <div className="flex flex-col space-y-4">
+            <div className="flex items-center space-x-2">
+              <span className="text-lg">🌐</span>
+              <h3>Patient's View</h3>
+            </div>
+            <Select
+              value={targetLanguage}
+              onValueChange={setTargetLanguage}
+              disabled={isRecording}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select language" />
+              </SelectTrigger>
+              <SelectContent>
+                {transcribeLanguages.map((lang) => (
+                  <SelectItem key={lang.code} value={lang.code}>
+                    {lang.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <ScrollArea
+              className="h-[500px] border rounded-lg bg-white p-6"
+              ref={translatedScrollAreaRef}
+            >
+              <div className="space-y-6" ref={translatedContentRef}>
+                {speakerSegments.length === 0 ? (
+                  <p className="text-gray-500 text-center">
+                    Transcript will appear here.
+                  </p>
+                ) : (
+                  speakerSegments
+                    .filter((segment) => segment.side === "right")
+                    .map(renderSegment)
+                )}
+              </div>
+            </ScrollArea>
+          </div>
+        </div>
       </div>
 
-      {/* Recording Status */}
-      {isRecording && (
-        <div className="mb-6 p-4 bg-green-50 border border-green-200 text-green-700 rounded-xl flex items-center">
-          <div className="w-4 h-4 bg-red-500 rounded-full mr-3 animate-pulse"></div>
-          <span className="font-medium">Recording in progress...</span>
+      {/* End Consultation Button */}
+      <div className="flex justify-center">
+        <Button
+          onClick={handleEndConsultation}
+          className="bg-slate-800 text-white hover:bg-slate-700"
+          size="lg"
+        >
+          <FileText className="w-4 h-4 mr-2" />
+          End Consultation + Summarise
+        </Button>
+      </div>
+
+      {/* Error display */}
+      {error && (
+        <div className="p-4 bg-red-50 border border-red-200 text-red-700 rounded-xl flex items-center fixed bottom-4 right-4">
+          <span className="mr-2">⚠️</span>
+          {error}
         </div>
       )}
-
-      {/* Debug Info */}
-      <div className="mb-6 p-4 bg-gray-100 rounded-lg text-sm text-gray-700">
-        <strong>Debug Info:</strong> {debugInfo}
-      </div>
-
-      {/* Main content area with side-by-side layout */}
-      <div className="space-y-6">
-        {/* Speaker Segments Display */}
-        {enableSpeakerIdentification && speakerSegments.length > 0 && (
-          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-6 rounded-xl border border-blue-200">
-            <h3 className="font-semibold text-lg text-gray-800 mb-4 flex items-center">
-              <span className="mr-2">👥</span>
-              Speaker Segments
-            </h3>
-            <div
-              ref={speakerSegmentsRef}
-              className="space-y-3 max-h-64 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100"
-            >
-              {speakerSegments.map((segment, index) => (
-                <div
-                  key={index}
-                  className="flex items-start space-x-3 bg-white p-3 rounded-lg shadow-sm"
-                >
-                  <span className="bg-blue-500 text-white px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap">
-                    {segment.speaker}
-                  </span>
-                  <div className="flex-1">
-                    <span className="text-gray-800">{segment.text}</span>
-                    {segment.language &&
-                      segment.language !== primaryLanguage && (
-                        <span className="ml-2 text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
-                          detected: {segment.language}
-                        </span>
-                      )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Transcription and Translation side by side */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Original Transcription */}
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-            <h3 className="font-semibold text-lg text-gray-800 mb-4 flex items-center">
-              <span className="mr-2">📝</span>
-              Original Transcription
-            </h3>
-            <div
-              ref={transcriptionRef}
-              className="bg-gray-50 p-4 rounded-lg h-64 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100"
-            >
-              <p className="whitespace-pre-wrap text-gray-800 leading-relaxed">
-                {transcription || "No transcription yet..."}
-              </p>
-            </div>
-          </div>
-
-          {/* Translation */}
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-            <h3 className="font-semibold text-lg text-gray-800 mb-4 flex items-center">
-              <span className="mr-2">🌐</span>
-              Translation
-              {targetLanguage !== "en" && (
-                <span className="ml-2 text-sm font-normal text-gray-500">
-                  (
-                  {
-                    supportedLanguages.find((l) => l.code === targetLanguage)
-                      ?.name
-                  }
-                  )
-                </span>
-              )}
-            </h3>
-            <div
-              ref={translationRef}
-              className="bg-gray-50 p-4 rounded-lg h-64 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100"
-            >
-              <p className="whitespace-pre-wrap text-gray-800 leading-relaxed">
-                {translatedText
-                  ? translatedText
-                  : primaryLanguage.startsWith("en") && targetLanguage === "en"
-                  ? "Translation disabled (English to English)"
-                  : "No translation yet..."}
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Error display */}
-        {error && (
-          <div className="p-4 bg-red-50 border border-red-200 text-red-700 rounded-xl flex items-center">
-            <span className="mr-2">⚠️</span>
-            {error}
-          </div>
-        )}
-      </div>
     </div>
   );
 };

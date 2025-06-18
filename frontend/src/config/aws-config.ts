@@ -1,6 +1,7 @@
 import { TranscribeStreamingClient } from "@aws-sdk/client-transcribe-streaming";
 import { TranslateClient } from "@aws-sdk/client-translate";
 import { BedrockRuntimeClient } from "@aws-sdk/client-bedrock-runtime";
+import { PollyClient } from "@aws-sdk/client-polly";
 
 // AWS Configuration
 export const awsConfig = {
@@ -15,9 +16,40 @@ export const awsConfig = {
 export const transcribeClient = new TranscribeStreamingClient(awsConfig);
 export const translateClient = new TranslateClient(awsConfig);
 export const bedrockClient = new BedrockRuntimeClient(awsConfig);
+export const pollyClient = new PollyClient(awsConfig);
 
-// Supported languages for translation
-export const supportedLanguages = [
+// Polly voice mapping for different languages
+export const pollyVoices = {
+  "en-US": "Matthew",
+  "es-US": "Miguel",
+  "fr-FR": "Mathieu",
+  "de-DE": "Daniel",
+  "it-IT": "Giorgio",
+  "pt-BR": "Ricardo",
+  "ar-SA": "Zeina",
+  "hi-IN": "Aditi",
+  "ja-JP": "Takumi",
+  "zh-CN": "Zhiyu",
+  "ko-KR": "Seoyeon",
+};
+
+// Supported languages for AWS Transcribe
+export const transcribeLanguages = [
+  { code: "en-US", name: "English (US)" },
+  { code: "es-US", name: "Spanish (US)" },
+  { code: "fr-FR", name: "French" },
+  { code: "de-DE", name: "German" },
+  { code: "it-IT", name: "Italian" },
+  { code: "pt-BR", name: "Portuguese (Brazil)" },
+  { code: "ar-SA", name: "Arabic" },
+  { code: "hi-IN", name: "Hindi" },
+  { code: "ja-JP", name: "Japanese" },
+  { code: "zh-CN", name: "Chinese (Simplified)" },
+  { code: "ko-KR", name: "Korean" },
+];
+
+// Supported languages for AWS Translate
+export const translateLanguages = [
   { code: "en", name: "English" },
   { code: "es", name: "Spanish" },
   { code: "fr", name: "French" },
@@ -28,4 +60,20 @@ export const supportedLanguages = [
   { code: "hi", name: "Hindi" },
   { code: "ja", name: "Japanese" },
   { code: "zh", name: "Chinese (Simplified)" },
+  { code: "ko", name: "Korean" },
 ];
+
+// Speaker labels in different languages
+export const speakerLabels = {
+  "en-US": { doctor: "Doctor", patient: "Patient" },
+  "es-US": { doctor: "Doctor", patient: "Paciente" },
+  "fr-FR": { doctor: "Médecin", patient: "Patient" },
+  "de-DE": { doctor: "Arzt", patient: "Patient" },
+  "it-IT": { doctor: "Dottore", patient: "Paziente" },
+  "pt-BR": { doctor: "Médico", patient: "Paciente" },
+  "ar-SA": { doctor: "طبيب", patient: "مريض" },
+  "hi-IN": { doctor: "डॉक्टर", patient: "मरीज़" },
+  "ja-JP": { doctor: "医師", patient: "患者" },
+  "zh-CN": { doctor: "医生", patient: "患者" },
+  "ko-KR": { doctor: "의사", patient: "환자" },
+};
