@@ -14,8 +14,8 @@ export function Navigation() {
         className={cn(
           "font-medium transition-colors",
           pathname === "/transcribe"
-            ? "text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
-            : "text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-300"
+            ? "text-blue-600 hover:text-blue-800"
+            : "text-gray-600 hover:text-gray-800"
         )}
       >
         Transcription
@@ -25,8 +25,8 @@ export function Navigation() {
         className={cn(
           "font-medium transition-colors",
           pathname === "/summarize"
-            ? "text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
-            : "text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-300"
+            ? "text-blue-600 hover:text-blue-800"
+            : "text-gray-600 hover:text-gray-800"
         )}
       >
         Summarization
