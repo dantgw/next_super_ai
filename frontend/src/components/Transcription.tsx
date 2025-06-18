@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useLayoutEffect } from "react";
 import {
   transcribeClient,
   translateClient,
@@ -66,6 +66,8 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
   const streamRef = useRef<MediaStream | null>(null);
   const originalScrollAreaRef = useRef<HTMLDivElement>(null);
   const translatedScrollAreaRef = useRef<HTMLDivElement>(null);
+  const originalContentRef = useRef<HTMLDivElement>(null);
+  const translatedContentRef = useRef<HTMLDivElement>(null);
 
   const SAMPLE_RATE = 44100;
 
@@ -78,23 +80,67 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
     );
   }, []);
 
-  // Auto-scroll to bottom when content updates
   const scrollToBottom = (ref: React.RefObject<HTMLDivElement | null>) => {
     if (ref.current) {
-      const scrollableViewport = ref.current.querySelector(
-        "div[data-radix-scroll-area-viewport]"
-      );
-      if (scrollableViewport)
-        scrollableViewport.scrollTop = scrollableViewport.scrollHeight;
+      const viewport = ref.current.querySelector(
+        '[data-radix-scroll-area-viewport=""]'
+      ) as HTMLElement;
+      if (viewport) {
+        viewport.scrollTo({
+          top: viewport.scrollHeight,
+          behavior: "smooth",
+        });
+      }
     }
   };
 
-  useEffect(() => {
-    if (originalScrollAreaRef.current && translatedScrollAreaRef.current) {
+  useLayoutEffect(() => {
+    if (speakerSegments.length > 0) {
       scrollToBottom(originalScrollAreaRef);
       scrollToBottom(translatedScrollAreaRef);
     }
   }, [speakerSegments]);
+
+  // Auto-scroll setup using MutationObserver
+  useEffect(() => {
+    const setupAutoScroll = (
+      contentRef: React.RefObject<HTMLDivElement | null>,
+      scrollAreaRef: React.RefObject<HTMLDivElement | null>
+    ) => {
+      const content = contentRef.current;
+      const scrollArea = scrollAreaRef.current;
+
+      if (!content || !scrollArea) return undefined;
+
+      const observer = new MutationObserver(() => {
+        const viewport = scrollArea.querySelector(
+          '[data-radix-scroll-area-viewport=""]'
+        );
+        if (viewport) {
+          viewport.scrollTop = viewport.scrollHeight;
+        }
+      });
+
+      observer.observe(content, {
+        childList: true,
+        subtree: true,
+        characterData: true,
+      });
+
+      return () => observer.disconnect();
+    };
+
+    const cleanup1 = setupAutoScroll(originalContentRef, originalScrollAreaRef);
+    const cleanup2 = setupAutoScroll(
+      translatedContentRef,
+      translatedScrollAreaRef
+    );
+
+    return () => {
+      cleanup1?.();
+      cleanup2?.();
+    };
+  }, []);
 
   // Encode PCM chunk for AWS Transcribe
   const encodePCMChunk = (chunk: any) => {
@@ -551,8 +597,11 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
                 ))}
               </SelectContent>
             </Select>
-            <ScrollArea className="h-[300px] border rounded-lg bg-white p-4">
-              <div className="space-y-4">
+            <ScrollArea
+              className="h-[500px] border rounded-lg bg-white p-6"
+              ref={originalScrollAreaRef}
+            >
+              <div className="space-y-6" ref={originalContentRef}>
                 {speakerSegments.length === 0 ? (
                   <p className="text-gray-500 text-center">
                     Press "Start Recording" for Provider or Patient.
@@ -561,16 +610,18 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
                   speakerSegments
                     .filter((segment) => segment.side === "left")
                     .map((segment) => (
-                      <div key={segment.id} className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium text-slate-600">
+                      <div
+                        key={segment.id}
+                        className="space-y-2 bg-slate-50 p-4 rounded-lg"
+                      >
+                        <div className="flex flex-col gap-2">
+                          <span className="text-sm font-semibold text-slate-700">
                             {getSpeakerLabel(
                               segment.speaker,
                               segment.language || primaryLanguage
                             )}
-                            :
                           </span>
-                          <p className="text-sm text-gray-900">
+                          <p className="text-base leading-relaxed text-gray-900">
                             {segment.text}
                           </p>
                         </div>
@@ -603,8 +654,11 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
                 ))}
               </SelectContent>
             </Select>
-            <ScrollArea className="h-[300px] border rounded-lg bg-white p-4">
-              <div className="space-y-4">
+            <ScrollArea
+              className="h-[500px] border rounded-lg bg-white p-6"
+              ref={translatedScrollAreaRef}
+            >
+              <div className="space-y-6" ref={translatedContentRef}>
                 {speakerSegments.length === 0 ? (
                   <p className="text-gray-500 text-center">
                     Transcript will appear here.
@@ -613,16 +667,18 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
                   speakerSegments
                     .filter((segment) => segment.side === "right")
                     .map((segment) => (
-                      <div key={`trans-${segment.id}`} className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium text-slate-600">
+                      <div
+                        key={`trans-${segment.id}`}
+                        className="space-y-2 bg-slate-50 p-4 rounded-lg"
+                      >
+                        <div className="flex flex-col gap-2">
+                          <span className="text-sm font-semibold text-slate-700">
                             {getSpeakerLabel(
                               segment.speaker,
                               segment.language || targetLanguage
                             )}
-                            :
                           </span>
-                          <p className="text-sm text-gray-900">
+                          <p className="text-base leading-relaxed text-gray-900">
                             {segment.text}
                           </p>
                         </div>
@@ -654,12 +710,6 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
           {error}
         </div>
       )}
-
-      {/* Footer */}
-      <div className="text-center text-sm text-gray-500">
-        Built for SuperAI Next Hackathon. Prioritizing accessibility and rapid
-        deployment.
-      </div>
     </div>
   );
 };

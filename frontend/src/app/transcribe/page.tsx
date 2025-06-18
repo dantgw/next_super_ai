@@ -1,15 +1,23 @@
 import { Transcription } from "../../components/Transcription";
 import { Navigation } from "../../components/Navigation";
+import Image from "next/image";
 
 export default function TranscribePage() {
   return (
     <div className="min-h-screen bg-white">
       <header className="bg-white shadow">
-        <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center">
-            <h1 className="text-3xl font-bold text-gray-900">
-              Live Transcription
-            </h1>
+        <div className="max-w-7xl h-20 mx-auto py-6 px-4 sm:px-6 lg:px-8">
+          <div className="flex h-full justify-between items-center">
+            <div className=" relative">
+              <Image
+                src="/health-reach-logo.png"
+                alt="Health Reach Logo"
+                height={48}
+                width={200}
+                priority
+                className="object-contain"
+              />
+            </div>
             <Navigation />
           </div>
         </div>
