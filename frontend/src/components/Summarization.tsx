@@ -73,7 +73,7 @@ Summary:`;
   };
 
   return (
-    <div className={`p-6 max-w-6xl mx-auto ${className}`}>
+    <div className={`p-6 max-w-6xl mx-auto ${className} text-black`}>
       {/* Header */}
       <div className="mb-8">
         <h2 className="text-2xl font-bold text-gray-800 mb-6 text-center">
