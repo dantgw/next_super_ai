@@ -6,14 +6,10 @@ import {
   bedrockClient,
   pollyClient,
   transcribeLanguages,
-  translateLanguages,
   speakerLabels,
   pollyVoices,
 } from "../config/aws-config";
-import {
-  StartStreamTranscriptionCommand,
-  TranscriptEvent,
-} from "@aws-sdk/client-transcribe-streaming";
+import { StartStreamTranscriptionCommand } from "@aws-sdk/client-transcribe-streaming";
 import { TranslateTextCommand } from "@aws-sdk/client-translate";
 import { InvokeModelCommand } from "@aws-sdk/client-bedrock-runtime";
 import { SynthesizeSpeechCommand } from "@aws-sdk/client-polly";
@@ -31,6 +27,8 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Mic, StopCircle, Loader2, FileText, Volume2 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
+import { toast } from "sonner";
+import ConsultationSummaryCard from "./ConsultationSummaryCard";
 
 interface TranscriptionProps {
   className?: string;
@@ -93,6 +91,9 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
   // Email validation
   const isValidEmail = (email: string) =>
     /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+
+  // Add summaryResult state
+  const [summaryResult, setSummaryResult] = useState<string>("");
 
   useEffect(() => {
     setSessionId(
@@ -433,22 +434,6 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
     }
   };
 
-  const clearTranscription = () => {
-    setTranscription("");
-    setTranslatedText("");
-    setSpeakerSegments([]);
-    setError(null);
-    setDebugInfo("");
-  };
-
-  // Update handleEndConsultation to require email
-  const handleEndConsultation = () => {
-    setEmailTouched(true);
-    if (!isValidEmail(patientEmail)) return;
-    stopRecording();
-    // Additional end consultation logic here (send summary to patientEmail)
-  };
-
   const createMicrophoneStream = async () => {
     microphoneStreamRef.current = new MicrophoneStream();
     const stream = await window.navigator.mediaDevices.getUserMedia({
@@ -659,6 +644,197 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
       </div>
     </div>
   );
+
+  const clearTranscription = () => {
+    setTranscription("");
+    setTranslatedText("");
+    setSpeakerSegments([]);
+    setError(null);
+    setDebugInfo("");
+    setSummaryResult("");
+  };
+
+  // Update handleEndConsultation to require email
+  const handleEndConsultation = async () => {
+    console.log("=== handleEndConsultation started ===");
+    console.log("Current patientEmail:", patientEmail);
+    console.log("Current emailTouched:", emailTouched);
+    console.log(
+      "Current isValidEmail(patientEmail):",
+      isValidEmail(patientEmail)
+    );
+
+    setEmailTouched(true);
+    console.log("Set emailTouched to true");
+
+    if (!isValidEmail(patientEmail)) {
+      console.log("Email validation failed, returning early");
+      return;
+    }
+
+    console.log("Email validation passed, proceeding with consultation end");
+
+    try {
+      console.log("=== Step 1: Stopping recording ===");
+      // Stop recording first
+      await stopRecording();
+      console.log("Recording stopped successfully");
+
+      console.log("=== Step 1.5: Checking state after recording stop ===");
+      console.log("speakerSegments state:", speakerSegments);
+      console.log("speakerSegments type:", typeof speakerSegments);
+      console.log("speakerSegments length:", speakerSegments?.length);
+      console.log("primaryLanguage:", primaryLanguage);
+      console.log("targetLanguage:", targetLanguage);
+      console.log("patientEmail:", patientEmail);
+
+      console.log("=== Step 2: Creating consultation text ===");
+      console.log("Current speakerSegments:", speakerSegments);
+      console.log("Number of segments:", speakerSegments.length);
+
+      // Create consultation text from speaker segments
+      const consultationText = speakerSegments
+        .map((segment) => `${segment.speaker}: ${segment.text}`)
+        .join("\n\n");
+      console.log("Generated consultationText:", consultationText);
+
+      console.log("=== Step 3: Creating translated consultation text ===");
+      // Create translated consultation text from translated segments
+      const translatedSegments = speakerSegments.filter(
+        (segment) =>
+          segment.language !==
+          (segment.side === "left" ? primaryLanguage : targetLanguage)
+      );
+      console.log("Filtered translatedSegments:", translatedSegments);
+
+      const translatedText =
+        translatedSegments.length > 0
+          ? translatedSegments
+              .map((segment) => `${segment.speaker}: ${segment.text}`)
+              .join("\n\n")
+          : null;
+      console.log("Generated translatedText:", translatedText);
+
+      console.log("=== Step 4: Generating summary with Bedrock ===");
+      // Generate summary using Bedrock
+      const prompt = `You are a medical scribe AI. Generate a consultation summary in markdown format using the following template. Use '##' for section headings and '-' for bullet lists. Do not use any HTML tags. Do not include a main heading like 'Consultation Summary'. Here is the template:
+
+## Patient Presentation
+[Summarize how the patient presented, including their chief complaint and initial presentation]
+
+## Key Symptoms Reported
+- Symptom 1
+- Symptom 2
+...
+
+## Additional Information
+[Include any relevant medical history, examination findings, test results, or other important information discussed]
+
+## Recommendation
+[Summarize the healthcare provider's recommendations, including any prescribed treatments, follow-up instructions, medications, or lifestyle advice]
+
+Consultation transcript:
+${consultationText}
+
+Generate the summary in markdown using the above structure, replacing the bracketed sections with the appropriate information from the transcript.`;
+      console.log("Bedrock prompt:", prompt);
+
+      const bedrockCommand = new InvokeModelCommand({
+        modelId: "us.meta.llama4-maverick-17b-instruct-v1:0",
+        body: JSON.stringify({
+          prompt: prompt,
+          max_gen_len: 500,
+          temperature: 0.3,
+        }),
+        contentType: "application/json",
+      });
+      console.log("Bedrock command created:", bedrockCommand);
+
+      console.log("Sending Bedrock request...");
+      const bedrockResponse = await bedrockClient.send(bedrockCommand);
+      console.log("Bedrock response received:", bedrockResponse);
+
+      let summaryText;
+      if (bedrockResponse.body) {
+        console.log("Processing Bedrock response body...");
+        const responseText = new TextDecoder().decode(bedrockResponse.body);
+        console.log("Decoded response text:", responseText);
+        const parsedResponse = JSON.parse(responseText);
+        console.log("Parsed response:", parsedResponse);
+        summaryText = parsedResponse.generation || "No summary generated.";
+        console.log("Extracted summaryText:", summaryText);
+        setSummaryResult(summaryText);
+      } else {
+        console.log("No Bedrock response body found");
+        summaryText = "No summary generated.";
+        setSummaryResult(summaryText);
+      }
+
+      console.log("=== Step 5: Calling summaries API ===");
+      const apiPayload = {
+        summary_text: summaryText,
+        transcribed_text: consultationText,
+        translated_text: translatedText,
+        email: patientEmail,
+        transcript_language: primaryLanguage,
+        translated_language: targetLanguage,
+      };
+      console.log("API payload:", apiPayload);
+
+      console.log("Making fetch request to /api/summaries...");
+      const response = await fetch("/api/summaries", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(apiPayload),
+      });
+      console.log("Fetch response received:", response);
+      console.log("Response status:", response.status);
+      console.log("Response ok:", response.ok);
+
+      const data = await response.json();
+      console.log("Response data:", data);
+
+      if (!response.ok) {
+        console.log("API request failed with status:", response.status);
+        throw new Error(data.error || "Failed to save consultation summary");
+      }
+
+      toast.success("Patient's case has been successfully saved!");
+
+      setPatientEmail("");
+      console.log("Patient email cleared");
+
+      setEmailTouched(false);
+      console.log("Email touched reset to false");
+
+      console.log("=== handleEndConsultation completed successfully ===");
+    } catch (err) {
+      console.error("=== handleEndConsultation ERROR ===");
+      console.error("Error details:", err);
+      console.error(
+        "Error message:",
+        err instanceof Error ? err.message : "Unknown error"
+      );
+      console.error(
+        "Error stack:",
+        err instanceof Error ? err.stack : "No stack trace"
+      );
+
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Failed to generate and save consultation summary. Please try again."
+      );
+      console.log(
+        "Set error message:",
+        err instanceof Error
+          ? err.message
+          : "Failed to generate and save consultation summary. Please try again."
+      );
+    }
+  };
 
   return (
     <div className="container mx-auto max-w-6xl p-4 space-y-6">
@@ -904,8 +1080,16 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
           </div>
 
           <Button
-            onClick={handleEndConsultation}
-            className="w-full"
+            onClick={() => {
+              console.log("End Consultation button clicked!");
+              console.log(
+                "Button disabled state:",
+                !isValidEmail(patientEmail)
+              );
+              console.log("Current patientEmail:", patientEmail);
+              handleEndConsultation();
+            }}
+            className="w-full cursor-pointer"
             size="lg"
             disabled={!isValidEmail(patientEmail)}
           >
@@ -914,6 +1098,9 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
           </Button>
         </div>
       </div>
+
+      {/* Summary Card */}
+      {summaryResult && <ConsultationSummaryCard summary={summaryResult} />}
 
       {/* Error display */}
       {error && (

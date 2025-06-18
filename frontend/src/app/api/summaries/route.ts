@@ -10,7 +10,14 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey);
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { transcribed_text, translated_text, summary_text } = body;
+    const {
+      transcribed_text,
+      translated_text,
+      summary_text,
+      transcript_language,
+      translated_language,
+      email,
+    } = body;
 
     // Validate required fields
     if (!transcribed_text) {
@@ -25,9 +32,12 @@ export async function POST(request: Request) {
       .from("summaries")
       .insert([
         {
+          email,
           transcribed_text,
           translated_text,
           summary_text,
+          transcript_language,
+          translated_language,
           created_at: new Date().toISOString(),
         },
       ])
