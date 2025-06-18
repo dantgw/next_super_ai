@@ -16,8 +16,23 @@ export const transcribeClient = new TranscribeStreamingClient(awsConfig);
 export const translateClient = new TranslateClient(awsConfig);
 export const bedrockClient = new BedrockRuntimeClient(awsConfig);
 
-// Supported languages for translation
-export const supportedLanguages = [
+// Supported languages for AWS Transcribe
+export const transcribeLanguages = [
+  { code: "en-US", name: "English (US)" },
+  { code: "es-US", name: "Spanish (US)" },
+  { code: "fr-FR", name: "French" },
+  { code: "de-DE", name: "German" },
+  { code: "it-IT", name: "Italian" },
+  { code: "pt-BR", name: "Portuguese (Brazil)" },
+  { code: "ar-SA", name: "Arabic" },
+  { code: "hi-IN", name: "Hindi" },
+  { code: "ja-JP", name: "Japanese" },
+  { code: "zh-CN", name: "Chinese (Simplified)" },
+  { code: "ko-KR", name: "Korean" },
+];
+
+// Supported languages for AWS Translate
+export const translateLanguages = [
   { code: "en", name: "English" },
   { code: "es", name: "Spanish" },
   { code: "fr", name: "French" },
@@ -28,4 +43,5 @@ export const supportedLanguages = [
   { code: "hi", name: "Hindi" },
   { code: "ja", name: "Japanese" },
   { code: "zh", name: "Chinese (Simplified)" },
+  { code: "ko", name: "Korean" },
 ];
