@@ -12,6 +12,8 @@
     "@aws-sdk/client-bedrock-runtime": "^3.511.0",
     "@aws-sdk/client-transcribe-streaming": "^3.511.0",
     "@aws-sdk/client-translate": "^3.511.0",
+    "@supabase/ssr": "^0.6.1",
+    "@supabase/supabase-js": "^2.50.0",
     "buffer": "^6.0.3",
     "microphone-stream": "^6.0.1",
     "next": "15.3.3",
