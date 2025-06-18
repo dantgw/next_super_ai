@@ -398,7 +398,7 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
           disabled={isLoading || isRecording}
           className={`px-6 py-3 rounded-full font-medium ${
             isLoading || isRecording
-              ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+              ? "bg-gray-600 text-gray-800 cursor-not-allowed"
               : "bg-gray-500 hover:bg-gray-600 text-white"
           }`}
         >
@@ -415,7 +415,7 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
       )}
 
       {/* Debug Info */}
-      <div className="mb-4 p-3 bg-gray-100 rounded text-sm">
+      <div className="mb-4 p-3 bg-gray-100 rounded text-sm text-black">
         <strong>Debug Info:</strong> {debugInfo}
       </div>
 
@@ -430,11 +430,11 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
                   <span className="bg-blue-200 text-blue-800 px-2 py-1 rounded text-xs font-medium">
                     {segment.speaker}
                   </span>
-                  <span className="text-sm">
+                  <span className="text-sm text-black">
                     {segment.text}
                     {segment.language &&
                       segment.language !== primaryLanguage && (
-                        <span className="ml-2 text-xs text-gray-500">
+                        <span className="ml-2 text-xs text-black">
                           (detected: {segment.language})
                         </span>
                       )}
@@ -446,7 +446,7 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
         )}
 
         {/* Original Transcription */}
-        <div className="p-4 bg-gray-50 rounded-lg">
+        <div className="p-4 bg-gray-50 rounded-lg text-gray-600">
           <h3 className="font-medium mb-2">Original Transcription:</h3>
           <p className="whitespace-pre-wrap text-black">
             {transcription || "No transcription yet..."}
