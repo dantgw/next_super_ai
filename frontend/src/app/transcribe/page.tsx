@@ -1,8 +1,29 @@
+"use client";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { supabase } from "../../lib/supabase";
 import { Transcription } from "../../components/Transcription";
 import { Navigation } from "../../components/Navigation";
 import Image from "next/image";
 
 export default function TranscribePage() {
+  const [loading, setLoading] = useState(true);
+  const router = useRouter();
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      const { data } = await supabase.auth.getUser();
+      if (!data.user) {
+        router.replace("/login");
+      } else {
+        setLoading(false);
+      }
+    };
+    checkAuth();
+  }, [router]);
+
+  if (loading) return null;
+
   return (
     <div className="min-h-screen bg-white">
       <header className="bg-white shadow">
@@ -23,7 +44,7 @@ export default function TranscribePage() {
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+      <main className="max-w-7xl mx-auto sm:px-6 lg:px-8">
         <div className="px-4 py-6 sm:px-0">
           <Transcription />
         </div>
