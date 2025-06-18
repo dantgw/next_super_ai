@@ -10,9 +10,11 @@ interface SummarizationProps {
 export const Summarization: React.FC<SummarizationProps> = ({ className }) => {
   const [inputText, setInputText] = useState("");
   const [summary, setSummary] = useState("");
+  const [translatedText, setTranslatedText] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [summaryLength, setSummaryLength] = useState("medium"); // short, medium, long
+  const [isSaving, setIsSaving] = useState(false);
 
   const generateSummary = async () => {
     if (!inputText.trim()) {
@@ -70,6 +72,49 @@ Summary:`;
     setInputText("");
     setSummary("");
     setError(null);
+  };
+
+  const saveSummary = async () => {
+    if (!summary) {
+      setError("No transcription to save");
+      return;
+    }
+
+    setIsSaving(true);
+    setError(null);
+
+    try {
+      const response = await fetch("/api/summaries", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          summary_text: summary,
+          transcribed_text: inputText,
+          translated_text: translatedText || null,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to save transcription");
+      }
+
+      // Show success message
+      setError("Transcription saved successfully!");
+      setTimeout(() => setError(null), 3000);
+    } catch (err) {
+      console.error("Error saving transcription:", err);
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Failed to save transcription. Please try again."
+      );
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -187,6 +232,20 @@ Summary:`;
         >
           🗑️ Clear All
         </button>
+
+        {summary && (
+          <button
+            onClick={saveSummary}
+            disabled={isSaving}
+            className={`px-8 py-4 rounded-xl font-semibold text-lg transition-all duration-200 ${
+              isSaving
+                ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+                : "bg-green-500 hover:bg-green-600 text-white shadow-lg hover:shadow-xl"
+            }`}
+          >
+            {isSaving ? "Saving..." : "💾 Save Summary"}
+          </button>
+        )}
       </div>
 
       {/* Error Display */}
