@@ -157,7 +157,7 @@ const howItHelps = [
     icon: <Ear className="h-6 w-6 text-primary" />,
     title: "Audio Playback for Every Summary",
     description:
-      "Can't read or prefer to listen? Each summary comes with natural-sounding audio making it easier for everyone to understand.",
+      "Can&apos;t read or prefer to listen? Each summary comes with natural-sounding audio making it easier for everyone to understand.",
   },
   {
     icon: <Accessibility className="h-6 w-6 text-primary" />,
@@ -217,13 +217,13 @@ const testimonials = [
   },
   {
     quote:
-      "For patients who don't speak English well, this tool has been a game-changer. Real-time translation and playback mean they actually understand what I've said - and that leads to better outcomes.",
+      "For patients who don&apos;t speak English well, this tool has been a game-changer. Real-time translation and playback mean they actually understand what I&apos;ve said - and that leads to better outcomes.",
     name: "Dr. Michael Rahman",
     title: "Family Medicine, Chicago",
   },
   {
     quote:
-      "I care for many elderly patients who struggle with memory or vision issues. Now they can revisit everything we discussed, in text or audio, and even share it with family. It's made care more inclusive - and safer.",
+      "I care for many elderly patients who struggle with memory or vision issues. Now they can revisit everything we discussed, in text or audio, and even share it with family. It&apos;s made care more inclusive - and safer.",
     name: "Dr. Priya Desai",
     title: "Geriatric Specialist, Singapore",
   },
@@ -391,8 +391,8 @@ export default function Home() {
                 Enterprise-Grade Healthcare Infrastructure
               </h2>
               <p className="text-lg text-slate-600 dark:text-slate-300 max-w-2xl mx-auto">
-                Built on AWS's HIPAA complaint services for maximum security,
-                scalability, and reliability
+                Built on AWS&apos;s HIPAA complaint services for maximum
+                security, scalability, and reliability
               </p>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 md:gap-8">
@@ -507,7 +507,7 @@ export default function Home() {
                   </div>
                   <div className="flex-grow">
                     <p className="text-slate-600 dark:text-slate-300 italic mb-4 text-center">
-                      "{testimonial.quote}"
+                      &ldquo;{testimonial.quote}&rdquo;
                     </p>
                   </div>
                   <div className="flex flex-col items-center text-center pt-4 border-t">
@@ -535,7 +535,7 @@ export default function Home() {
               The Future of Healthcare is Inclusive.
             </h3>
             <p className="text-lg text-slate-700 dark:text-slate-300 max-w-2xl mx-auto mb-6">
-              Whether you're a doctor, patient, or caregiver, our platform
+              Whether you&apos;re a doctor, patient, or caregiver, our platform
               ensures everyone stays informed, supported, and safe.
             </p>
             <p className="text-2xl font-semibold text-primary mb-8">
