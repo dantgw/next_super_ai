@@ -180,36 +180,49 @@ const ConsultationSummaryCard: React.FC<ConsultationSummaryCardProps> = ({
     if (printWindow) {
       printWindow.document.write(`
         <!DOCTYPE html>
-        <html>
+        <html lang="${
+          showTranslated && translatedSummary
+            ? translatedLanguage?.split("-")[0]
+            : "en"
+        }">
         <head>
+          <meta charset="UTF-8">
           <title>${title}</title>
           <style>
             body {
-              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif;
               line-height: 1.6;
               color: #333;
               max-width: 800px;
               margin: 0 auto;
               padding: 20px;
+              font-size: 14px;
             }
             h1 {
               color: #1f2937;
               border-bottom: 2px solid #e5e7eb;
               padding-bottom: 10px;
               margin-bottom: 20px;
+              font-size: 24px;
+              font-weight: bold;
             }
             h2 {
               color: #374151;
               margin-top: 30px;
               margin-bottom: 15px;
+              font-size: 20px;
+              font-weight: bold;
             }
             h3 {
               color: #4b5563;
               margin-top: 25px;
               margin-bottom: 10px;
+              font-size: 18px;
+              font-weight: 600;
             }
             ul {
               margin-left: 20px;
+              margin-bottom: 15px;
             }
             li {
               margin-bottom: 5px;
@@ -217,10 +230,20 @@ const ConsultationSummaryCard: React.FC<ConsultationSummaryCardProps> = ({
             p {
               margin-bottom: 15px;
             }
+            strong {
+              font-weight: bold;
+            }
+            em {
+              font-style: italic;
+            }
             @media print {
               body {
                 padding: 0;
+                font-size: 12px;
               }
+              h1 { font-size: 20px; }
+              h2 { font-size: 16px; }
+              h3 { font-size: 14px; }
             }
           </style>
         </head>
@@ -228,15 +251,39 @@ const ConsultationSummaryCard: React.FC<ConsultationSummaryCardProps> = ({
           <h1>${title}</h1>
           <div id="content"></div>
           <script>
-            // Convert markdown to HTML (simple conversion for basic markdown)
-            const markdown = \`${contentToSave.replace(/`/g, "\\`")}\`;
-            const content = markdown
-              .replace(/^### (.*$)/gim, '<h3>$1</h3>')
-              .replace(/^## (.*$)/gim, '<h2>$1</h2>')
-              .replace(/^# (.*$)/gim, '<h1>$1</h1>')
-              .replace(/^\\* (.*$)/gim, '<li>$1</li>')
-              .replace(/\\n\\n/g, '</p><p>')
-              .replace(/^(.+)$/gim, '<p>$1</p>');
+            // More robust markdown to HTML conversion
+            function markdownToHtml(markdown) {
+              if (!markdown) return '';
+              
+              let html = markdown
+                // Headers
+                .replace(/^### (.*$)/gim, '<h3>$1</h3>')
+                .replace(/^## (.*$)/gim, '<h2>$1</h2>')
+                .replace(/^# (.*$)/gim, '<h1>$1</h1>')
+                // Bold and italic
+                .replace(/\\*\\*(.*?)\\*\\*/g, '<strong>$1</strong>')
+                .replace(/\\*(.*?)\\*/g, '<em>$1</em>')
+                // Lists
+                .replace(/^\\* (.*$)/gim, '<li>$1</li>')
+                .replace(/^- (.*$)/gim, '<li>$1</li>')
+                // Wrap lists in ul tags
+                .replace(/(<li>.*<\\/li>)/gs, '<ul>$1</ul>')
+                // Paragraphs
+                .replace(/\\n\\n/g, '</p><p>')
+                .replace(/^(.+)$/gim, '<p>$1</p>')
+                // Clean up empty paragraphs
+                .replace(/<p><\\/p>/g, '')
+                // Clean up nested ul tags
+                .replace(/<ul><ul>/g, '<ul>')
+                .replace(/<\\/ul><\\/ul>/g, '</ul>');
+              
+              return html;
+            }
+            
+            const markdown = \`${contentToSave
+              .replace(/`/g, "\\`")
+              .replace(/\$/g, "\\$")}\`;
+            const content = markdownToHtml(markdown);
             
             document.getElementById('content').innerHTML = content;
             
@@ -244,7 +291,7 @@ const ConsultationSummaryCard: React.FC<ConsultationSummaryCardProps> = ({
             setTimeout(() => {
               window.print();
               window.close();
-            }, 500);
+            }, 1000);
           </script>
         </body>
         </html>
