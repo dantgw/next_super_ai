@@ -86,6 +86,14 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
   // Add auto-play state
   const [autoPlayEnabled, setAutoPlayEnabled] = useState(false);
 
+  // Add patient email state
+  const [patientEmail, setPatientEmail] = useState("");
+  const [emailTouched, setEmailTouched] = useState(false);
+
+  // Email validation
+  const isValidEmail = (email: string) =>
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+
   useEffect(() => {
     setSessionId(
       `SESSION_${Date.now()}_${Math.random()
@@ -433,9 +441,12 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
     setDebugInfo("");
   };
 
+  // Update handleEndConsultation to require email
   const handleEndConsultation = () => {
+    setEmailTouched(true);
+    if (!isValidEmail(patientEmail)) return;
     stopRecording();
-    // Additional end consultation logic here
+    // Additional end consultation logic here (send summary to patientEmail)
   };
 
   const createMicrophoneStream = async () => {
@@ -594,10 +605,34 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
 
   // Update the segment rendering in the return statement to include audio playback buttons
   const renderSegment = (segment: SpeakerSegment) => (
-    <div key={segment.id} className="space-y-2 bg-slate-50 p-4 rounded-lg">
-      <div className="flex flex-col gap-2">
-        <div className="flex justify-between items-center">
-          <span className="text-sm font-semibold text-slate-700">
+    <div
+      key={segment.id}
+      className={`flex items-start gap-3 p-3 rounded-lg border transition-colors ${
+        segment.speaker === "Doctor"
+          ? "bg-blue-50 border-blue-200 hover:border-blue-300"
+          : "bg-green-50 border-green-200 hover:border-green-300"
+      }`}
+    >
+      <div
+        className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${
+          segment.speaker === "Doctor" ? "bg-blue-100" : "bg-green-100"
+        }`}
+      >
+        <span
+          className={`text-xs font-medium ${
+            segment.speaker === "Doctor" ? "text-blue-600" : "text-green-600"
+          }`}
+        >
+          {segment.speaker === "Doctor" ? "D" : "P"}
+        </span>
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center justify-between mb-1">
+          <span
+            className={`text-sm font-medium ${
+              segment.speaker === "Doctor" ? "text-blue-700" : "text-green-700"
+            }`}
+          >
             {getSpeakerLabel(
               segment.speaker,
               segment.language || primaryLanguage
@@ -608,94 +643,143 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
               variant="ghost"
               size="sm"
               onClick={() => handlePlayAudio(segment.id, segment.audioUrl)}
-              className={
+              className={`h-6 w-6 p-0 ${
                 isPlayingAudio === segment.id
-                  ? "text-blue-600"
-                  : "text-gray-600"
-              }
+                  ? segment.speaker === "Doctor"
+                    ? "text-blue-600"
+                    : "text-green-600"
+                  : "text-gray-400"
+              }`}
             >
-              <Volume2 className="h-4 w-4" />
+              <Volume2 className="h-3 w-3" />
             </Button>
           )}
         </div>
-        <p className="text-base leading-relaxed text-gray-900">
-          {segment.text}
-        </p>
+        <p className="text-sm text-gray-900 leading-relaxed">{segment.text}</p>
       </div>
     </div>
   );
 
   return (
-    <div className="flex flex-col space-y-8 p-8 max-w-7xl mx-auto">
-      {/* Audio Input Section */}
-      <div>
-        <h2 className="text-2xl font-semibold text-center mb-6">Audio Input</h2>
+    <div className="container mx-auto max-w-6xl p-4 space-y-6">
+      {/* Header */}
+      <div className="text-center space-y-2">
+        <h1 className="text-2xl font-bold text-gray-900">
+          Medical Consultation Translator
+        </h1>
+        <p className="text-gray-600">
+          Real-time transcription and translation for healthcare providers and
+          patients
+        </p>
+      </div>
 
-        {/* Settings Section */}
-        <div className="flex flex-col items-center space-y-4 mb-8">
-          {/* Auto-play Control */}
-          <div className="flex items-center space-x-2">
-            <Checkbox
-              id="auto-play"
-              checked={autoPlayEnabled}
-              onCheckedChange={(checked) =>
-                setAutoPlayEnabled(checked === true)
-              }
-              className="border-slate-300"
-            />
-            <label
-              htmlFor="auto-play"
-              className="text-sm text-slate-700 cursor-pointer select-none"
-            >
-              Auto-play translations
-            </label>
+      {/* Auto-play toggle */}
+      <div className="flex justify-center">
+        <div className="flex items-center space-x-2 bg-white rounded-lg px-4 py-2 shadow-sm border">
+          <Checkbox
+            id="auto-play"
+            checked={autoPlayEnabled}
+            onCheckedChange={(checked) => setAutoPlayEnabled(checked === true)}
+            className="border-gray-300"
+          />
+          <label
+            htmlFor="auto-play"
+            className="text-sm text-gray-700 cursor-pointer select-none"
+          >
+            Auto-play translations
+          </label>
+        </div>
+      </div>
+
+      {/* Transcript Views */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Provider's View */}
+        <div className="bg-white rounded-xl shadow-sm border">
+          <div className="p-4 border-b border-gray-100">
+            <div className="flex items-center space-x-2">
+              <span className="text-lg">👨‍⚕️</span>
+              <h3 className="font-semibold text-gray-900">Provider View</h3>
+            </div>
           </div>
-
-          {autoPlayEnabled && (
-            <p className="text-xs text-slate-500 italic">
-              Translations will automatically play when received
-            </p>
-          )}
+          <ScrollArea className="h-[500px]" ref={originalScrollAreaRef}>
+            <div className="p-4 space-y-3" ref={originalContentRef}>
+              {speakerSegments.length === 0 ? (
+                <div className="text-center py-12">
+                  <div className="text-gray-400 text-6xl mb-4">🎙️</div>
+                  <p className="text-gray-500">
+                    Start recording to see the conversation
+                  </p>
+                </div>
+              ) : (
+                speakerSegments
+                  .filter((segment) => segment.side === "left")
+                  .map(renderSegment)
+              )}
+            </div>
+          </ScrollArea>
         </div>
 
-        <div className="grid grid-cols-2 gap-8">
-          {/* Healthcare Provider */}
-          <div className="flex flex-col items-center space-y-4">
-            <div className="text-center">
-              <span className="text-4xl">👨‍⚕️</span>
-              <h3 className="mt-2 font-medium">Healthcare Provider</h3>
+        {/* Patient's View */}
+        <div className="bg-white rounded-xl shadow-sm border">
+          <div className="p-4 border-b border-gray-100">
+            <div className="flex items-center space-x-2">
+              <span className="text-lg">🤒</span>
+              <h3 className="font-semibold text-gray-900">Patient View</h3>
             </div>
-            <div className="relative w-24 h-24">
-              <div
-                className={`absolute inset-0 rounded-full  ${
-                  activeRecorder === "provider"
-                    ? "bg-red-500/20"
-                    : "bg-green-500/20"
-                }`}
-              ></div>
-              <div
-                className={`absolute inset-2 rounded-full  ${
-                  activeRecorder === "provider"
-                    ? "bg-red-500/30"
-                    : "bg-green-500/30"
-                }`}
-              ></div>
-              <div
-                className={`absolute inset-4 rounded-full transition-colors ${
-                  activeRecorder === "provider" ? "bg-red-500" : "bg-green-500"
-                }`}
-              ></div>
+          </div>
+          <ScrollArea className="h-[500px]" ref={translatedScrollAreaRef}>
+            <div className="p-4 space-y-3" ref={translatedContentRef}>
+              {speakerSegments.length === 0 ? (
+                <div className="text-center py-12">
+                  <div className="text-gray-400 text-6xl mb-4">🌐</div>
+                  <p className="text-gray-500">Translations will appear here</p>
+                </div>
+              ) : (
+                speakerSegments
+                  .filter((segment) => segment.side === "right")
+                  .map(renderSegment)
+              )}
             </div>
-            <p className="text-gray-600">
-              {activeRecorder === "provider"
-                ? "Recording..."
-                : "Ready to record"}
-            </p>
+          </ScrollArea>
+        </div>
+      </div>
+
+      {/* Recording Controls */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Provider Controls */}
+        <div className="bg-white rounded-xl shadow-sm border p-6">
+          <div className="space-y-4">
+            <div className="flex items-center space-x-3">
+              <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
+                <span className="text-xl">👨‍⚕️</span>
+              </div>
+              <Select
+                value={primaryLanguage}
+                onValueChange={setPrimaryLanguage}
+                disabled={isRecording}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select language" />
+                </SelectTrigger>
+                <SelectContent>
+                  {transcribeLanguages.map((lang) => (
+                    <SelectItem key={lang.code} value={lang.code}>
+                      {lang.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
             <Button
               variant={
-                activeRecorder === "provider" ? "destructive" : "outline"
+                activeRecorder === "provider" ? "destructive" : "default"
               }
-              className="w-full max-w-xs bg-slate-800 text-white hover:text-white hover:scale-105 transition-all duration-150 hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              className={`w-full ${
+                activeRecorder !== "provider"
+                  ? "bg-green-600 hover:bg-green-700 text-white"
+                  : ""
+              }`}
               onClick={
                 activeRecorder === "provider"
                   ? stopRecording
@@ -707,50 +791,56 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
                 isAudioCurrentlyPlaying()
               }
             >
-              <Mic className="w-4 h-4 mr-2" />
-              {activeRecorder === "provider"
-                ? "Stop Recording"
-                : "Start Recording"}
+              <Mic
+                className={`w-4 h-4 mr-2 ${
+                  activeRecorder === "provider" ? "text-white" : "text-white"
+                }`}
+              />
+              <span
+                className={
+                  activeRecorder === "provider" ? "text-white" : "text-white"
+                }
+              >
+                {activeRecorder === "provider"
+                  ? "Stop Recording"
+                  : "Start Recording"}
+              </span>
             </Button>
           </div>
+        </div>
 
-          {/* Patient/Caregiver */}
-          <div className="flex flex-col items-center space-y-4">
-            <div className="text-center">
-              <span className="text-4xl">🤒</span>
-              <h3 className="mt-2 font-medium">Patient/Caregiver</h3>
+        {/* Patient Controls */}
+        <div className="bg-white rounded-xl shadow-sm border p-6">
+          <div className="space-y-4">
+            <div className="flex items-center space-x-3">
+              <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center">
+                <span className="text-xl">🤒</span>
+              </div>
+              <Select
+                value={targetLanguage}
+                onValueChange={setTargetLanguage}
+                disabled={isRecording}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select language" />
+                </SelectTrigger>
+                <SelectContent>
+                  {transcribeLanguages.map((lang) => (
+                    <SelectItem key={lang.code} value={lang.code}>
+                      {lang.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-            <div className="relative w-24 h-24">
-              {/* <div className="absolute inset-0 rounded-full bg-green-500/20"></div> */}
-              <div
-                className={`absolute inset-0 rounded-full  ${
-                  activeRecorder === "patient"
-                    ? "bg-red-500/20"
-                    : "bg-green-500/20"
-                }`}
-              ></div>
-              <div
-                className={`absolute inset-2 rounded-full  ${
-                  activeRecorder === "patient"
-                    ? "bg-red-500/30"
-                    : "bg-green-500/30"
-                }`}
-              ></div>
-              {/* <div className="absolute inset-2 rounded-full bg-green-500/30"></div> */}
-              <div
-                className={`absolute inset-4 rounded-full transition-colors ${
-                  activeRecorder === "patient" ? "bg-red-500" : "bg-green-500"
-                }`}
-              ></div>
-            </div>
-            <p className="text-gray-600">
-              {activeRecorder === "patient"
-                ? "Recording..."
-                : "Ready to record"}
-            </p>
+
             <Button
-              variant={activeRecorder === "patient" ? "destructive" : "outline"}
-              className="w-full max-w-xs bg-slate-800 text-white hover:text-white hover:bg-slate-600 hover:shadow-lg hover:scale-105 transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
+              variant={activeRecorder === "patient" ? "destructive" : "default"}
+              className={`w-full ${
+                activeRecorder !== "patient"
+                  ? "bg-green-600 hover:bg-green-700 text-white"
+                  : ""
+              }`}
               onClick={
                 activeRecorder === "patient"
                   ? stopRecording
@@ -762,120 +852,74 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
                 isAudioCurrentlyPlaying()
               }
             >
-              <Mic className="w-4 h-4 mr-2" />
-              {activeRecorder === "patient"
-                ? "Stop Recording"
-                : "Start Recording"}
+              <Mic
+                className={`w-4 h-4 mr-2 ${
+                  activeRecorder === "patient" ? "text-white" : "text-white"
+                }`}
+              />
+              <span
+                className={
+                  activeRecorder === "patient" ? "text-white" : "text-white"
+                }
+              >
+                {activeRecorder === "patient"
+                  ? "Stop Recording"
+                  : "Start Recording"}
+              </span>
             </Button>
           </div>
         </div>
       </div>
 
-      {/* Real-time Transcript Section */}
-      <div>
-        <h2 className="text-2xl font-semibold text-center mb-6">
-          Real-time Transcript
-        </h2>
-        <div className="grid grid-cols-2 gap-8">
-          {/* Provider's View */}
-          <div className="flex flex-col space-y-4">
-            <div className="flex items-center space-x-2">
-              <span className="text-lg">🎙️</span>
-              <h3>Provider's View</h3>
-            </div>
-            <Select
-              value={primaryLanguage}
-              onValueChange={setPrimaryLanguage}
-              disabled={isRecording}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select language" />
-              </SelectTrigger>
-              <SelectContent>
-                {transcribeLanguages.map((lang) => (
-                  <SelectItem key={lang.code} value={lang.code}>
-                    {lang.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <ScrollArea
-              className="h-[500px] border rounded-lg bg-white p-6"
-              ref={originalScrollAreaRef}
-            >
-              <div className="space-y-6" ref={originalContentRef}>
-                {speakerSegments.length === 0 ? (
-                  <p className="text-gray-500 text-center">
-                    Press "Start Recording" for Provider or Patient.
-                  </p>
-                ) : (
-                  speakerSegments
-                    .filter((segment) => segment.side === "left")
-                    .map(renderSegment)
-                )}
-              </div>
-            </ScrollArea>
+      {/* Email & End Consultation */}
+      <div className="bg-white rounded-xl shadow-sm border p-6">
+        <div className="max-w-md mx-auto space-y-4">
+          <div className="text-center">
+            <h3 className="font-semibold text-gray-900 mb-2">
+              End Consultation
+            </h3>
+            <p className="text-sm text-gray-600">
+              Enter patient's email to send consultation summary
+            </p>
           </div>
 
-          {/* Patient's View */}
-          <div className="flex flex-col space-y-4">
-            <div className="flex items-center space-x-2">
-              <span className="text-lg">🌐</span>
-              <h3>Patient's View</h3>
-            </div>
-            <Select
-              value={targetLanguage}
-              onValueChange={setTargetLanguage}
-              disabled={isRecording}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select language" />
-              </SelectTrigger>
-              <SelectContent>
-                {transcribeLanguages.map((lang) => (
-                  <SelectItem key={lang.code} value={lang.code}>
-                    {lang.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <ScrollArea
-              className="h-[500px] border rounded-lg bg-white p-6"
-              ref={translatedScrollAreaRef}
-            >
-              <div className="space-y-6" ref={translatedContentRef}>
-                {speakerSegments.length === 0 ? (
-                  <p className="text-gray-500 text-center">
-                    Transcript will appear here.
-                  </p>
-                ) : (
-                  speakerSegments
-                    .filter((segment) => segment.side === "right")
-                    .map(renderSegment)
-                )}
-              </div>
-            </ScrollArea>
+          <div className="space-y-2">
+            <input
+              type="email"
+              value={patientEmail}
+              onChange={(e) => setPatientEmail(e.target.value)}
+              onBlur={() => setEmailTouched(true)}
+              className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                emailTouched && !isValidEmail(patientEmail)
+                  ? "border-red-300"
+                  : "border-gray-300"
+              }`}
+              placeholder="patient@example.com"
+            />
+            {emailTouched && !isValidEmail(patientEmail) && (
+              <p className="text-xs text-red-500">
+                Please enter a valid email address
+              </p>
+            )}
           </div>
+
+          <Button
+            onClick={handleEndConsultation}
+            className="w-full"
+            size="lg"
+            disabled={!isValidEmail(patientEmail)}
+          >
+            <FileText className="w-4 h-4 mr-2" />
+            End Consultation & Send Summary
+          </Button>
         </div>
-      </div>
-
-      {/* End Consultation Button */}
-      <div className="flex justify-center">
-        <Button
-          onClick={handleEndConsultation}
-          className="bg-slate-800 text-white hover:bg-slate-700"
-          size="lg"
-        >
-          <FileText className="w-4 h-4 mr-2" />
-          End Consultation + Summarise
-        </Button>
       </div>
 
       {/* Error display */}
       {error && (
-        <div className="p-4 bg-red-50 border border-red-200 text-red-700 rounded-xl flex items-center fixed bottom-4 right-4">
+        <div className="fixed bottom-4 right-4 bg-red-50 border border-red-200 text-red-700 rounded-lg p-4 flex items-center shadow-lg max-w-sm">
           <span className="mr-2">⚠️</span>
-          {error}
+          <span className="text-sm">{error}</span>
         </div>
       )}
     </div>
