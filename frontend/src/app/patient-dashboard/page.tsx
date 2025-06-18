@@ -75,6 +75,8 @@ export default function PatientDashboardPage() {
                 <ConsultationSummaryCard
                   key={summary.id}
                   summary={summary.summary_text}
+                  translatedLanguage={summary.translated_language}
+                  translatedSummary={summary.translated_summary}
                 />
               ))
             )}

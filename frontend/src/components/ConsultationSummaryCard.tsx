@@ -2,21 +2,97 @@
 import React, { useState, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { FileText, Download, Volume2, Loader2 } from "lucide-react";
+import { FileText, Download, Volume2, Loader2, Languages } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { pollyClient, pollyVoices } from "../config/aws-config";
+import {
+  pollyClient,
+  pollyVoices,
+  translateClient,
+  translateLanguages,
+} from "../config/aws-config";
 import { SynthesizeSpeechCommand } from "@aws-sdk/client-polly";
+import { TranslateTextCommand } from "@aws-sdk/client-translate";
 
 interface ConsultationSummaryCardProps {
   summary: string;
+  translatedLanguage?: string;
+  translatedSummary?: string | null;
 }
 
 const ConsultationSummaryCard: React.FC<ConsultationSummaryCardProps> = ({
   summary,
+  translatedLanguage,
+  translatedSummary: initialTranslatedSummary,
 }) => {
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
   const [isGeneratingAudio, setIsGeneratingAudio] = useState(false);
+  const [isTranslating, setIsTranslating] = useState(false);
+  const [translatedSummary, setTranslatedSummary] = useState<string | null>(
+    initialTranslatedSummary || null
+  );
+  const [showTranslated, setShowTranslated] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  // Load existing translated summary on mount
+  React.useEffect(() => {
+    if (initialTranslatedSummary) {
+      setTranslatedSummary(initialTranslatedSummary);
+    }
+  }, [initialTranslatedSummary]);
+
+  // Translate text using AWS Translate
+  const translateText = async (
+    text: string,
+    targetLanguage: string
+  ): Promise<string | null> => {
+    try {
+      // Convert language code from format like "en-US" to "en" for AWS Translate
+      const targetCode = targetLanguage.split("-")[0];
+
+      const command = new TranslateTextCommand({
+        Text: text,
+        SourceLanguageCode: "auto", // Auto-detect source language
+        TargetLanguageCode: targetCode,
+      });
+
+      const response = await translateClient.send(command);
+      return response.TranslatedText || null;
+    } catch (err) {
+      console.error("Error translating text:", err);
+      return null;
+    }
+  };
+
+  // Handle translation
+  const handleTranslate = async () => {
+    if (!translatedLanguage) {
+      console.error("Missing translated language");
+      return;
+    }
+
+    try {
+      setIsTranslating(true);
+
+      // Translate the summary
+      const translated = await translateText(summary, translatedLanguage);
+
+      if (translated) {
+        setTranslatedSummary(translated);
+        setShowTranslated(true);
+        console.log("Translation completed successfully");
+      }
+    } catch (err) {
+      console.error("Translation error:", err);
+    } finally {
+      setIsTranslating(false);
+    }
+  };
+
+  // Get language name from code
+  const getLanguageName = (code: string): string => {
+    const lang = translateLanguages.find((l) => l.code === code.split("-")[0]);
+    return lang ? lang.name : code;
+  };
 
   // Synthesize speech using Amazon Polly
   const synthesizeSpeech = async (
@@ -60,7 +136,12 @@ const ConsultationSummaryCard: React.FC<ConsultationSummaryCardProps> = ({
 
     try {
       setIsGeneratingAudio(true);
-      const audioUrl = await synthesizeSpeech(summary);
+      // Use the currently displayed content for audio generation
+      const contentToSpeak =
+        showTranslated && translatedSummary ? translatedSummary : summary;
+      const languageCode =
+        showTranslated && translatedSummary ? translatedLanguage : "en-US";
+      const audioUrl = await synthesizeSpeech(contentToSpeak, languageCode);
 
       if (audioUrl) {
         if (audioRef.current) {
@@ -86,6 +167,14 @@ const ConsultationSummaryCard: React.FC<ConsultationSummaryCardProps> = ({
 
   // Handle PDF download
   const handleSaveAsPDF = () => {
+    // Use the currently displayed content (original or translated)
+    const contentToSave =
+      showTranslated && translatedSummary ? translatedSummary : summary;
+    const title =
+      showTranslated && translatedSummary
+        ? "Translated Consultation Summary"
+        : "Consultation Summary";
+
     // Create a new window with the summary content
     const printWindow = window.open("", "_blank");
     if (printWindow) {
@@ -93,7 +182,7 @@ const ConsultationSummaryCard: React.FC<ConsultationSummaryCardProps> = ({
         <!DOCTYPE html>
         <html>
         <head>
-          <title>Consultation Summary</title>
+          <title>${title}</title>
           <style>
             body {
               font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -136,11 +225,11 @@ const ConsultationSummaryCard: React.FC<ConsultationSummaryCardProps> = ({
           </style>
         </head>
         <body>
-          <h1>Consultation Summary</h1>
+          <h1>${title}</h1>
           <div id="content"></div>
           <script>
             // Convert markdown to HTML (simple conversion for basic markdown)
-            const markdown = \`${summary.replace(/`/g, "\\`")}\`;
+            const markdown = \`${contentToSave.replace(/`/g, "\\`")}\`;
             const content = markdown
               .replace(/^### (.*$)/gim, '<h3>$1</h3>')
               .replace(/^## (.*$)/gim, '<h2>$1</h2>')
@@ -206,9 +295,35 @@ const ConsultationSummaryCard: React.FC<ConsultationSummaryCardProps> = ({
             ),
           }}
         >
-          {summary}
+          {showTranslated && translatedSummary ? translatedSummary : summary}
         </ReactMarkdown>
       </div>
+
+      {/* Language indicator */}
+      {translatedLanguage && (
+        <div className="mb-4 p-3 bg-gray-50 rounded-lg">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <Languages className="h-4 w-4 text-gray-600" />
+              <span className="text-sm text-gray-600">
+                {showTranslated && translatedSummary
+                  ? `Translated to ${getLanguageName(translatedLanguage)}`
+                  : "Original summary"}
+              </span>
+            </div>
+            {translatedSummary && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowTranslated(!showTranslated)}
+                className="text-xs"
+              >
+                {showTranslated ? "Show Original" : "Show Translation"}
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Action buttons at bottom */}
       <div className="flex items-center space-x-2 pt-4">
@@ -228,6 +343,29 @@ const ConsultationSummaryCard: React.FC<ConsultationSummaryCardProps> = ({
           )}
           <span>{isPlayingAudio ? "Stop" : "Play"}</span>
         </Button>
+
+        {translatedLanguage && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleTranslate}
+            disabled={isTranslating}
+            className="flex items-center space-x-2"
+          >
+            {isTranslating ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Languages className="h-4 w-4" />
+            )}
+            <span>
+              {isTranslating
+                ? "Translating..."
+                : translatedSummary
+                ? "Re-translate"
+                : `Translate to ${getLanguageName(translatedLanguage)}`}
+            </span>
+          </Button>
+        )}
 
         <Button
           variant="outline"
