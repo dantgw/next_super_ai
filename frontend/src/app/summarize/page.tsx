@@ -1,5 +1,4 @@
-import { Summarization } from "../../components/Summarization";
-import Link from "next/link";
+import { Navigation } from "../../components/Navigation";
 
 export default function SummarizePage() {
   return (
@@ -8,29 +7,34 @@ export default function SummarizePage() {
         <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center">
             <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
-              Text Summarization Assistant
+              Medical Summary
             </h1>
-            <nav className="flex space-x-4">
-              <Link
-                href="/"
-                className="text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-300 font-medium"
-              >
-                Transcription
-              </Link>
-              <Link
-                href="/summarize"
-                className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 font-medium"
-              >
-                Summarization
-              </Link>
-            </nav>
+            <Navigation />
           </div>
         </div>
       </header>
 
       <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
         <div className="px-4 py-6 sm:px-0">
-          <Summarization />
+          <div className="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
+            <p className="text-gray-600 dark:text-gray-300 mb-4">
+              Upload a transcription or paste text to generate a medical
+              summary.
+            </p>
+            {/* Placeholder for future summarization functionality */}
+            <div className="space-y-4">
+              <textarea
+                className="w-full h-32 p-2 border rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                placeholder="Paste your medical transcription here..."
+              />
+              <button
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                onClick={() => alert("Summarization feature coming soon!")}
+              >
+                Generate Summary
+              </button>
+            </div>
+          </div>
         </div>
       </main>
     </div>
