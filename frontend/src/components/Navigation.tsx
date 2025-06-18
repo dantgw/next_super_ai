@@ -1,15 +1,12 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { cn } from "../lib/utils";
+import { useRouter } from "next/navigation";
 import { useEffect, useState, useRef } from "react";
 import { supabase } from "../lib/supabase";
 import { User as UserIcon } from "lucide-react";
 import type { User } from "@supabase/supabase-js";
 
 export function Navigation() {
-  const pathname = usePathname();
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [dropdownOpen, setDropdownOpen] = useState(false);
