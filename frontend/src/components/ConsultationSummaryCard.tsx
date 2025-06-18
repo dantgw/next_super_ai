@@ -94,6 +94,34 @@ const ConsultationSummaryCard: React.FC<ConsultationSummaryCardProps> = ({
     return lang ? lang.name : code;
   };
 
+  // Translate the title
+  const getTranslatedTitle = async (languageCode: string): Promise<string> => {
+    try {
+      const translated = await translateText(
+        "Consultation Summary",
+        languageCode
+      );
+      return translated || "Consultation Summary";
+    } catch (err) {
+      console.error("Error translating title:", err);
+      return "Consultation Summary";
+    }
+  };
+
+  // State for translated title
+  const [translatedTitle, setTranslatedTitle] = useState<string>(
+    "Consultation Summary"
+  );
+
+  // Load translated title when switching to translated view
+  React.useEffect(() => {
+    if (showTranslated && translatedSummary && translatedLanguage) {
+      getTranslatedTitle(translatedLanguage).then(setTranslatedTitle);
+    } else {
+      setTranslatedTitle("Consultation Summary");
+    }
+  }, [showTranslated, translatedSummary, translatedLanguage]);
+
   // Synthesize speech using Amazon Polly
   const synthesizeSpeech = async (
     text: string,
@@ -172,7 +200,7 @@ const ConsultationSummaryCard: React.FC<ConsultationSummaryCardProps> = ({
       showTranslated && translatedSummary ? translatedSummary : summary;
     const title =
       showTranslated && translatedSummary
-        ? "Translated Consultation Summary"
+        ? translatedTitle
         : "Consultation Summary";
 
     // Create a new window with the summary content
@@ -305,9 +333,7 @@ const ConsultationSummaryCard: React.FC<ConsultationSummaryCardProps> = ({
       {/* Minimal header */}
       <div className="flex items-center mb-6">
         <FileText className="size-6 mr-2 text-black" />
-        <h1 className="text-2xl font-bold text-gray-900">
-          Consultation Summary
-        </h1>
+        <h1 className="text-2xl font-bold text-gray-900">{translatedTitle}</h1>
       </div>
 
       {/* Content */}
