@@ -166,48 +166,16 @@ const ConsultationSummaryCard: React.FC<ConsultationSummaryCardProps> = ({
 
   return (
     <div className="mt-6 bg-white rounded-xl shadow-md border p-8 max-w-3xl mx-auto relative">
-      {/* Header with buttons */}
-      <div className="flex items-center justify-between mb-8">
-        <div className="flex items-center">
-          <FileText className="size-8 mr-2 text-black" />
-          <h1 className="text-3xl font-bold text-gray-900">
-            Consultation Summary
-          </h1>
-        </div>
-
-        {/* Action buttons */}
-        <div className="flex items-center space-x-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handlePlayAudio}
-            disabled={isGeneratingAudio}
-            className="flex items-center space-x-2"
-          >
-            {isGeneratingAudio ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : isPlayingAudio ? (
-              <Volume2 className="h-4 w-4 text-blue-600" />
-            ) : (
-              <Volume2 className="h-4 w-4" />
-            )}
-            <span>{isPlayingAudio ? "Stop" : "Play"}</span>
-          </Button>
-
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleSaveAsPDF}
-            className="flex items-center space-x-2"
-          >
-            <Download className="h-4 w-4" />
-            <span>Save as PDF</span>
-          </Button>
-        </div>
+      {/* Minimal header */}
+      <div className="flex items-center mb-6">
+        <FileText className="size-6 mr-2 text-black" />
+        <h1 className="text-2xl font-bold text-gray-900">
+          Consultation Summary
+        </h1>
       </div>
 
       {/* Content */}
-      <div className="prose max-w-none">
+      <div className="prose max-w-none mb-6">
         <ReactMarkdown
           remarkPlugins={[remarkGfm]}
           components={{
@@ -240,6 +208,36 @@ const ConsultationSummaryCard: React.FC<ConsultationSummaryCardProps> = ({
         >
           {summary}
         </ReactMarkdown>
+      </div>
+
+      {/* Action buttons at bottom */}
+      <div className="flex items-center space-x-2 pt-4">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handlePlayAudio}
+          disabled={isGeneratingAudio}
+          className="flex items-center space-x-2"
+        >
+          {isGeneratingAudio ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : isPlayingAudio ? (
+            <Volume2 className="h-4 w-4 text-blue-600" />
+          ) : (
+            <Volume2 className="h-4 w-4" />
+          )}
+          <span>{isPlayingAudio ? "Stop" : "Play"}</span>
+        </Button>
+
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleSaveAsPDF}
+          className="flex items-center space-x-2"
+        >
+          <Download className="h-4 w-4" />
+          <span>Save as PDF</span>
+        </Button>
       </div>
     </div>
   );
