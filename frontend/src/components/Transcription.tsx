@@ -19,6 +19,13 @@ interface TranscriptionProps {
   className?: string;
 }
 
+interface SpeakerSegment {
+  speaker: string;
+  text: string;
+  timestamp: number;
+  language?: string;
+}
+
 export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
   const [isRecording, setIsRecording] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -27,13 +34,16 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
   const [translatedText, setTranslatedText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [debugInfo, setDebugInfo] = useState<string>("");
+  const [speakerSegments, setSpeakerSegments] = useState<SpeakerSegment[]>([]);
+  const [enableSpeakerIdentification, setEnableSpeakerIdentification] =
+    useState(false);
+  const [primaryLanguage, setPrimaryLanguage] = useState("en-US");
 
   const microphoneStreamRef = useRef<MicrophoneStream | null>(null);
   const transcribeStreamRef = useRef<any>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
   const SAMPLE_RATE = 44100;
-  const language = "en-US";
 
   // Encode PCM chunk for AWS Transcribe
   const encodePCMChunk = (chunk: any) => {
@@ -63,10 +73,10 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
     }
   };
 
-  // Start streaming transcription
+  // Start streaming transcription with speaker identification
   const startStreaming = async (callback: (text: string) => void) => {
     const command = new StartStreamTranscriptionCommand({
-      LanguageCode: language,
+      LanguageCode: primaryLanguage as any,
       MediaEncoding: "pcm",
       MediaSampleRateHertz: SAMPLE_RATE,
       AudioStream: getAudioStream(),
@@ -82,10 +92,37 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
           for await (const event of data.TranscriptResultStream!) {
             const results = event.TranscriptEvent?.Transcript?.Results;
             if (results && results.length && !results[0]?.IsPartial) {
-              const newTranscript = results[0].Alternatives?.[0]?.Transcript;
+              const result = results[0];
+              const newTranscript = result.Alternatives?.[0]?.Transcript;
+
               if (newTranscript) {
                 console.log("New transcript:", newTranscript);
-                callback(newTranscript + " ");
+
+                // For now, we'll use a simple approach to detect speaker changes
+                // based on pauses and text patterns
+                if (enableSpeakerIdentification) {
+                  const newSegment: SpeakerSegment = {
+                    speaker: `Speaker ${speakerSegments.length + 1}`, // Simple speaker numbering
+                    text: newTranscript,
+                    timestamp: Date.now(),
+                  };
+
+                  setSpeakerSegments((prev) => [...prev, newSegment]);
+
+                  // Try to detect language for this segment
+                  detectLanguage(newTranscript).then((language) => {
+                    if (language && language !== primaryLanguage) {
+                      setSpeakerSegments((prev) =>
+                        prev.map((seg) =>
+                          seg === newSegment ? { ...seg, language } : seg
+                        )
+                      );
+                    }
+                  });
+                } else {
+                  // Fallback to single speaker mode
+                  callback(newTranscript + " ");
+                }
 
                 // Process async operations without blocking the stream
                 if (targetLanguage !== "en") {
@@ -106,6 +143,23 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
 
       // Start processing the stream in the background
       processStream();
+    }
+  };
+
+  // Detect language for a text segment
+  const detectLanguage = async (text: string): Promise<string | null> => {
+    try {
+      // For now, we'll use a simple heuristic approach
+      // In a production app, you might want to use AWS Comprehend for language detection
+      const nonLatinPattern = /[^\u0000-\u007F]/;
+      if (nonLatinPattern.test(text)) {
+        // This is a very basic heuristic - you'd want more sophisticated detection
+        return "auto";
+      }
+      return null;
+    } catch (error) {
+      console.error("Language detection error:", error);
+      return null;
     }
   };
 
@@ -136,6 +190,9 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
       if (microphoneStreamRef.current || transcribeStreamRef.current) {
         stopRecording();
       }
+
+      // Clear previous segments
+      setSpeakerSegments([]);
 
       // Create microphone stream
       await createMicrophoneStream();
@@ -236,6 +293,7 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
   const clearTranscription = () => {
     setTranscription("");
     setTranslatedText("");
+    setSpeakerSegments([]);
     setError(null);
     setDebugInfo("");
   };
@@ -253,22 +311,67 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
 
   return (
     <div className={`p-6 max-w-4xl mx-auto ${className}`}>
-      <div className="mb-6">
-        <label htmlFor="language" className="block text-sm font-medium mb-2">
-          Target Language
-        </label>
-        <select
-          id="language"
-          className="w-full p-2 border rounded-md"
-          value={targetLanguage}
-          onChange={(e) => setTargetLanguage(e.target.value)}
-        >
-          {supportedLanguages.map((lang) => (
-            <option key={lang.code} value={lang.code}>
-              {lang.name}
-            </option>
-          ))}
-        </select>
+      <div className="mb-6 space-y-4">
+        <div>
+          <label
+            htmlFor="primaryLanguage"
+            className="block text-sm font-medium mb-2"
+          >
+            Primary Language (for transcription)
+          </label>
+          <select
+            id="primaryLanguage"
+            className="w-full p-2 border rounded-md"
+            value={primaryLanguage}
+            onChange={(e) => setPrimaryLanguage(e.target.value)}
+          >
+            <option value="en-US">English (US)</option>
+            <option value="es-US">Spanish (US)</option>
+            <option value="fr-FR">French</option>
+            <option value="de-DE">German</option>
+            <option value="it-IT">Italian</option>
+            <option value="pt-BR">Portuguese (Brazil)</option>
+            <option value="ja-JP">Japanese</option>
+            <option value="ko-KR">Korean</option>
+            <option value="zh-CN">Chinese (Simplified)</option>
+            <option value="ar-SA">Arabic</option>
+            <option value="hi-IN">Hindi</option>
+          </select>
+        </div>
+
+        <div>
+          <label htmlFor="language" className="block text-sm font-medium mb-2">
+            Target Language (for translation)
+          </label>
+          <select
+            id="language"
+            className="w-full p-2 border rounded-md"
+            value={targetLanguage}
+            onChange={(e) => setTargetLanguage(e.target.value)}
+          >
+            {supportedLanguages.map((lang) => (
+              <option key={lang.code} value={lang.code}>
+                {lang.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="flex items-center space-x-2">
+          <input
+            type="checkbox"
+            id="speakerIdentification"
+            checked={enableSpeakerIdentification}
+            onChange={(e) => setEnableSpeakerIdentification(e.target.checked)}
+            className="rounded"
+          />
+          <label
+            htmlFor="speakerIdentification"
+            className="text-sm font-medium"
+          >
+            Enable Speaker Identification (for multiple speakers)
+          </label>
+        </div>
       </div>
 
       <div className="flex gap-4 mb-6">
@@ -317,9 +420,35 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
       </div>
 
       <div className="space-y-4">
+        {/* Speaker Segments Display */}
+        {enableSpeakerIdentification && speakerSegments.length > 0 && (
+          <div className="p-4 bg-blue-50 rounded-lg">
+            <h3 className="font-medium mb-2">Speaker Segments:</h3>
+            <div className="space-y-2">
+              {speakerSegments.map((segment, index) => (
+                <div key={index} className="flex items-start space-x-2">
+                  <span className="bg-blue-200 text-blue-800 px-2 py-1 rounded text-xs font-medium">
+                    {segment.speaker}
+                  </span>
+                  <span className="text-sm">
+                    {segment.text}
+                    {segment.language &&
+                      segment.language !== primaryLanguage && (
+                        <span className="ml-2 text-xs text-gray-500">
+                          (detected: {segment.language})
+                        </span>
+                      )}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Original Transcription */}
         <div className="p-4 bg-gray-50 rounded-lg">
           <h3 className="font-medium mb-2">Original Transcription:</h3>
-          <p className="whitespace-pre-wrap">
+          <p className="whitespace-pre-wrap text-black">
             {transcription || "No transcription yet..."}
           </p>
         </div>
@@ -327,7 +456,7 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
         {targetLanguage !== "en" && translatedText && (
           <div className="p-4 bg-gray-50 rounded-lg">
             <h3 className="font-medium mb-2">Translation:</h3>
-            <p className="whitespace-pre-wrap">{translatedText}</p>
+            <p className="whitespace-pre-wrap text-black">{translatedText}</p>
           </div>
         )}
 
