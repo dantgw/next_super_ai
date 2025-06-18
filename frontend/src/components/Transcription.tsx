@@ -42,8 +42,18 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
   const microphoneStreamRef = useRef<MicrophoneStream | null>(null);
   const transcribeStreamRef = useRef<any>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const transcriptionRef = useRef<HTMLDivElement>(null);
+  const translationRef = useRef<HTMLDivElement>(null);
+  const speakerSegmentsRef = useRef<HTMLDivElement>(null);
 
   const SAMPLE_RATE = 44100;
+
+  // Auto-scroll to bottom when content updates
+  const scrollToBottom = (ref: React.RefObject<HTMLDivElement | null>) => {
+    if (ref.current) {
+      ref.current.scrollTop = ref.current.scrollHeight;
+    }
+  };
 
   // Encode PCM chunk for AWS Transcribe
   const encodePCMChunk = (chunk: any) => {
@@ -298,6 +308,19 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
     setDebugInfo("");
   };
 
+  // Auto-scroll effects
+  useEffect(() => {
+    scrollToBottom(transcriptionRef);
+  }, [transcription]);
+
+  useEffect(() => {
+    scrollToBottom(translationRef);
+  }, [translatedText]);
+
+  useEffect(() => {
+    scrollToBottom(speakerSegmentsRef);
+  }, [speakerSegments]);
+
   useEffect(() => {
     return () => {
       if (streamRef.current) {
@@ -310,158 +333,221 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
   }, []);
 
   return (
-    <div className={`p-6 max-w-4xl mx-auto ${className}`}>
-      <div className="mb-6 space-y-4">
-        <div>
-          <label
-            htmlFor="primaryLanguage"
-            className="block text-sm font-medium mb-2"
-          >
-            Primary Language (for transcription)
-          </label>
-          <select
-            id="primaryLanguage"
-            className="w-full p-2 border rounded-md"
-            value={primaryLanguage}
-            onChange={(e) => setPrimaryLanguage(e.target.value)}
-          >
-            <option value="en-US">English (US)</option>
-            <option value="es-US">Spanish (US)</option>
-            <option value="fr-FR">French</option>
-            <option value="de-DE">German</option>
-            <option value="it-IT">Italian</option>
-            <option value="pt-BR">Portuguese (Brazil)</option>
-            <option value="ja-JP">Japanese</option>
-            <option value="ko-KR">Korean</option>
-            <option value="zh-CN">Chinese (Simplified)</option>
-            <option value="ar-SA">Arabic</option>
-            <option value="hi-IN">Hindi</option>
-          </select>
+    <div className={`p-6 max-w-6xl mx-auto ${className}`}>
+      {/* Header with improved layout */}
+      <div className="mb-8">
+        <h2 className="text-2xl font-bold text-gray-800 mb-6 text-center">
+          Real-Time Transcription & Translation
+        </h2>
+
+        {/* Language settings in a grid layout */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+          <div className="bg-white p-4 rounded-lg shadow-sm border">
+            <label
+              htmlFor="primaryLanguage"
+              className="block text-sm font-semibold text-gray-700 mb-2"
+            >
+              Primary Language (for transcription)
+            </label>
+            <select
+              id="primaryLanguage"
+              className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+              value={primaryLanguage}
+              onChange={(e) => setPrimaryLanguage(e.target.value)}
+            >
+              <option value="en-US">English (US)</option>
+              <option value="es-US">Spanish (US)</option>
+              <option value="fr-FR">French</option>
+              <option value="de-DE">German</option>
+              <option value="it-IT">Italian</option>
+              <option value="pt-BR">Portuguese (Brazil)</option>
+              <option value="ja-JP">Japanese</option>
+              <option value="ko-KR">Korean</option>
+              <option value="zh-CN">Chinese (Simplified)</option>
+              <option value="ar-SA">Arabic</option>
+              <option value="hi-IN">Hindi</option>
+            </select>
+          </div>
+
+          <div className="bg-white p-4 rounded-lg shadow-sm border">
+            <label
+              htmlFor="language"
+              className="block text-sm font-semibold text-gray-700 mb-2"
+            >
+              Target Language (for translation)
+            </label>
+            <select
+              id="language"
+              className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+              value={targetLanguage}
+              onChange={(e) => setTargetLanguage(e.target.value)}
+            >
+              {supportedLanguages.map((lang) => (
+                <option key={lang.code} value={lang.code}>
+                  {lang.name}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
-        <div>
-          <label htmlFor="language" className="block text-sm font-medium mb-2">
-            Target Language (for translation)
-          </label>
-          <select
-            id="language"
-            className="w-full p-2 border rounded-md"
-            value={targetLanguage}
-            onChange={(e) => setTargetLanguage(e.target.value)}
-          >
-            {supportedLanguages.map((lang) => (
-              <option key={lang.code} value={lang.code}>
-                {lang.name}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="flex items-center space-x-2">
-          <input
-            type="checkbox"
-            id="speakerIdentification"
-            checked={enableSpeakerIdentification}
-            onChange={(e) => setEnableSpeakerIdentification(e.target.checked)}
-            className="rounded"
-          />
-          <label
-            htmlFor="speakerIdentification"
-            className="text-sm font-medium"
-          >
-            Enable Speaker Identification (for multiple speakers)
-          </label>
+        {/* Speaker identification toggle */}
+        <div className="bg-white p-4 rounded-lg shadow-sm border mb-6">
+          <div className="flex items-center space-x-3">
+            <input
+              type="checkbox"
+              id="speakerIdentification"
+              checked={enableSpeakerIdentification}
+              onChange={(e) => setEnableSpeakerIdentification(e.target.checked)}
+              className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
+            />
+            <label
+              htmlFor="speakerIdentification"
+              className="text-sm font-medium text-gray-700"
+            >
+              Enable Speaker Identification (for multiple speakers)
+            </label>
+          </div>
         </div>
       </div>
 
+      {/* Control buttons */}
       <div className="flex gap-4 mb-6">
         <button
           onClick={isRecording ? stopRecording : startRecording}
           disabled={isLoading}
-          className={`flex-1 py-3 px-6 rounded-full text-white font-medium ${
+          className={`flex-1 py-4 px-8 rounded-xl text-white font-semibold text-lg transition-all duration-200 ${
             isLoading
               ? "bg-gray-400 cursor-not-allowed"
               : isRecording
-              ? "bg-red-500 hover:bg-red-600"
-              : "bg-blue-500 hover:bg-blue-600"
+              ? "bg-red-500 hover:bg-red-600 shadow-lg hover:shadow-xl"
+              : "bg-blue-500 hover:bg-blue-600 shadow-lg hover:shadow-xl"
           }`}
         >
           {isLoading
             ? "Loading..."
             : isRecording
-            ? "Stop Recording"
-            : "Start Recording"}
+            ? "⏹️ Stop Recording"
+            : "🎤 Start Recording"}
         </button>
 
         <button
           onClick={clearTranscription}
           disabled={isLoading || isRecording}
-          className={`px-6 py-3 rounded-full font-medium ${
+          className={`px-8 py-4 rounded-xl font-semibold text-lg transition-all duration-200 ${
             isLoading || isRecording
-              ? "bg-gray-600 text-gray-800 cursor-not-allowed"
-              : "bg-gray-500 hover:bg-gray-600 text-white"
+              ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+              : "bg-gray-500 hover:bg-gray-600 text-white shadow-lg hover:shadow-xl"
           }`}
         >
-          Clear
+          🗑️ Clear
         </button>
       </div>
 
       {/* Recording Status */}
       {isRecording && (
-        <div className="mb-4 p-3 bg-green-50 text-green-700 rounded-lg flex items-center">
-          <div className="w-3 h-3 bg-red-500 rounded-full mr-2 animate-pulse"></div>
-          Recording in progress...
+        <div className="mb-6 p-4 bg-green-50 border border-green-200 text-green-700 rounded-xl flex items-center">
+          <div className="w-4 h-4 bg-red-500 rounded-full mr-3 animate-pulse"></div>
+          <span className="font-medium">Recording in progress...</span>
         </div>
       )}
 
       {/* Debug Info */}
-      <div className="mb-4 p-3 bg-gray-100 rounded text-sm text-black">
+      <div className="mb-6 p-4 bg-gray-100 rounded-lg text-sm text-gray-700">
         <strong>Debug Info:</strong> {debugInfo}
       </div>
 
-      <div className="space-y-4">
+      {/* Main content area with side-by-side layout */}
+      <div className="space-y-6">
         {/* Speaker Segments Display */}
         {enableSpeakerIdentification && speakerSegments.length > 0 && (
-          <div className="p-4 bg-blue-50 rounded-lg">
-            <h3 className="font-medium mb-2">Speaker Segments:</h3>
-            <div className="space-y-2">
+          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-6 rounded-xl border border-blue-200">
+            <h3 className="font-semibold text-lg text-gray-800 mb-4 flex items-center">
+              <span className="mr-2">👥</span>
+              Speaker Segments
+            </h3>
+            <div
+              ref={speakerSegmentsRef}
+              className="space-y-3 max-h-64 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100"
+            >
               {speakerSegments.map((segment, index) => (
-                <div key={index} className="flex items-start space-x-2">
-                  <span className="bg-blue-200 text-blue-800 px-2 py-1 rounded text-xs font-medium">
+                <div
+                  key={index}
+                  className="flex items-start space-x-3 bg-white p-3 rounded-lg shadow-sm"
+                >
+                  <span className="bg-blue-500 text-white px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap">
                     {segment.speaker}
                   </span>
-                  <span className="text-sm text-black">
-                    {segment.text}
+                  <div className="flex-1">
+                    <span className="text-gray-800">{segment.text}</span>
                     {segment.language &&
                       segment.language !== primaryLanguage && (
-                        <span className="ml-2 text-xs text-black">
-                          (detected: {segment.language})
+                        <span className="ml-2 text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                          detected: {segment.language}
                         </span>
                       )}
-                  </span>
+                  </div>
                 </div>
               ))}
             </div>
           </div>
         )}
 
-        {/* Original Transcription */}
-        <div className="p-4 bg-gray-50 rounded-lg text-gray-600">
-          <h3 className="font-medium mb-2">Original Transcription:</h3>
-          <p className="whitespace-pre-wrap text-black">
-            {transcription || "No transcription yet..."}
-          </p>
+        {/* Transcription and Translation side by side */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Original Transcription */}
+          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+            <h3 className="font-semibold text-lg text-gray-800 mb-4 flex items-center">
+              <span className="mr-2">📝</span>
+              Original Transcription
+            </h3>
+            <div
+              ref={transcriptionRef}
+              className="bg-gray-50 p-4 rounded-lg h-64 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100"
+            >
+              <p className="whitespace-pre-wrap text-gray-800 leading-relaxed">
+                {transcription || "No transcription yet..."}
+              </p>
+            </div>
+          </div>
+
+          {/* Translation */}
+          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+            <h3 className="font-semibold text-lg text-gray-800 mb-4 flex items-center">
+              <span className="mr-2">🌐</span>
+              Translation
+              {targetLanguage !== "en" && (
+                <span className="ml-2 text-sm font-normal text-gray-500">
+                  (
+                  {
+                    supportedLanguages.find((l) => l.code === targetLanguage)
+                      ?.name
+                  }
+                  )
+                </span>
+              )}
+            </h3>
+            <div
+              ref={translationRef}
+              className="bg-gray-50 p-4 rounded-lg h-64 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100"
+            >
+              <p className="whitespace-pre-wrap text-gray-800 leading-relaxed">
+                {targetLanguage !== "en" && translatedText
+                  ? translatedText
+                  : targetLanguage === "en"
+                  ? "Translation disabled (target language is English)"
+                  : "No translation yet..."}
+              </p>
+            </div>
+          </div>
         </div>
 
-        {targetLanguage !== "en" && translatedText && (
-          <div className="p-4 bg-gray-50 rounded-lg">
-            <h3 className="font-medium mb-2">Translation:</h3>
-            <p className="whitespace-pre-wrap text-black">{translatedText}</p>
-          </div>
-        )}
-
+        {/* Error display */}
         {error && (
-          <div className="p-4 bg-red-50 text-red-700 rounded-lg">{error}</div>
+          <div className="p-4 bg-red-50 border border-red-200 text-red-700 rounded-xl flex items-center">
+            <span className="mr-2">⚠️</span>
+            {error}
+          </div>
         )}
       </div>
     </div>
