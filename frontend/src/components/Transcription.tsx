@@ -49,6 +49,11 @@ interface SpeakerSegment {
 // Add type for supported language codes
 type SupportedLanguageCode = keyof typeof speakerLabels;
 
+// Add isPatientTranslation to SpeakerSegment for translation segments
+type SpeakerSegmentWithTranslation = SpeakerSegment & {
+  isPatientTranslation?: boolean;
+};
+
 export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
   const [isRecording, setIsRecording] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -485,7 +490,9 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
   };
 
   // Modify the existing code where we add segments to include audio synthesis
-  const addSegmentWithAudio = async (segment: SpeakerSegment) => {
+  const addSegmentWithAudio = async (
+    segment: SpeakerSegmentWithTranslation
+  ) => {
     try {
       const audioUrl = await synthesizeSpeech(
         segment.text,
@@ -494,9 +501,8 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
       const segmentWithAudio = { ...segment, audioUrl };
       setSpeakerSegments((prev) => [...prev, segmentWithAudio]);
 
-      // Auto-play the audio if enabled and it's a translation (right side)
-      if (autoPlayEnabled && segment.side === "right" && audioUrl) {
-        // Small delay to ensure the UI has updated
+      // Auto-play the audio if enabled and it's a translation for the patient
+      if (autoPlayEnabled && segment.isPatientTranslation && audioUrl) {
         setTimeout(() => {
           handlePlayAudio(segmentWithAudio.id, audioUrl);
         }, 100);
@@ -564,13 +570,19 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
         targetCode
       );
       if (translatedText) {
-        const translatedSegment: SpeakerSegment = {
+        // Determine if this translation is for the patient
+        const side = isProviderSpeaking ? "right" : "left";
+        const isPatientTranslation =
+          (isProviderSpeaking && side === "right") ||
+          (!isProviderSpeaking && side === "left");
+        const translatedSegment: SpeakerSegmentWithTranslation = {
           id: Date.now(),
           speaker: isProviderSpeaking ? "Doctor" : "Patient",
           text: translatedText,
           timestamp: Date.now(),
           language: isProviderSpeaking ? targetLanguage : primaryLanguage,
-          side: isProviderSpeaking ? "right" : "left",
+          side,
+          isPatientTranslation,
         };
         await addSegmentWithAudio(translatedSegment);
       }
@@ -683,7 +695,7 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
               variant={
                 activeRecorder === "provider" ? "destructive" : "outline"
               }
-              className="w-full max-w-xs bg-slate-800 text-white hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full max-w-xs bg-slate-800 text-white hover:text-white hover:scale-105 transition-all duration-150 hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed"
               onClick={
                 activeRecorder === "provider"
                   ? stopRecording
@@ -738,7 +750,7 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
             </p>
             <Button
               variant={activeRecorder === "patient" ? "destructive" : "outline"}
-              className="w-full max-w-xs bg-slate-800 text-white hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full max-w-xs bg-slate-800 text-white hover:text-white hover:bg-slate-600 hover:shadow-lg hover:scale-105 transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
               onClick={
                 activeRecorder === "patient"
                   ? stopRecording
