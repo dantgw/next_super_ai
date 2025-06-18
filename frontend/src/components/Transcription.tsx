@@ -395,6 +395,7 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
         channelCount: 1,
         echoCancellation: true,
         noiseSuppression: true,
+        autoGainControl: true,
       },
     });
     streamRef.current = stream;
