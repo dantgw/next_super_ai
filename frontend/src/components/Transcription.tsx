@@ -244,7 +244,7 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
                   }
 
                   // Process with Bedrock in background
-                  processWithBedrock(newTranscript).catch(console.error);
+                  // processWithBedrock(newTranscript).catch(console.error);
                 }
               }
             }
@@ -319,24 +319,24 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
     }
   };
 
-  const processWithBedrock = async (text: string) => {
-    try {
-      const bedrockCommand = new InvokeModelCommand({
-        modelId: "anthropic.claude-v2",
-        body: JSON.stringify({
-          prompt: `\n\nHuman: Please analyze this medical transcription and provide any relevant medical context or corrections: "${text}"\n\nAssistant:`,
-          max_tokens_to_sample: 500,
-          temperature: 0.7,
-        }),
-        contentType: "application/json",
-      });
+  // const processWithBedrock = async (text: string) => {
+  //   try {
+  //     const bedrockCommand = new InvokeModelCommand({
+  //       modelId: "anthropic.claude-v2",
+  //       body: JSON.stringify({
+  //         prompt: `\n\nHuman: Please analyze this medical transcription and provide any relevant medical context or corrections: "${text}"\n\nAssistant:`,
+  //         max_tokens_to_sample: 500,
+  //         temperature: 0.7,
+  //       }),
+  //       contentType: "application/json",
+  //     });
 
-      const llmResponse = await bedrockClient.send(bedrockCommand);
-      console.log("LLM response:", llmResponse);
-    } catch (err) {
-      console.error("Bedrock error:", err);
-    }
-  };
+  //     const llmResponse = await bedrockClient.send(bedrockCommand);
+  //     console.log("LLM response:", llmResponse);
+  //   } catch (err) {
+  //     console.error("Bedrock error:", err);
+  //   }
+  // };
 
   const startProviderRecording = async () => {
     if (activeRecorder === "patient") {
@@ -435,8 +435,20 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
               <h3 className="mt-2 font-medium">Healthcare Provider</h3>
             </div>
             <div className="relative w-24 h-24">
-              <div className="absolute inset-0 rounded-full bg-green-500/20"></div>
-              <div className="absolute inset-2 rounded-full bg-green-500/30"></div>
+              <div
+                className={`absolute inset-0 rounded-full  ${
+                  activeRecorder === "provider"
+                    ? "bg-red-500/20"
+                    : "bg-green-500/20"
+                }`}
+              ></div>
+              <div
+                className={`absolute inset-2 rounded-full  ${
+                  activeRecorder === "provider"
+                    ? "bg-red-500/30"
+                    : "bg-green-500/30"
+                }`}
+              ></div>
               <div
                 className={`absolute inset-4 rounded-full transition-colors ${
                   activeRecorder === "provider" ? "bg-red-500" : "bg-green-500"
@@ -476,8 +488,22 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
               <h3 className="mt-2 font-medium">Patient/Caregiver</h3>
             </div>
             <div className="relative w-24 h-24">
-              <div className="absolute inset-0 rounded-full bg-green-500/20"></div>
-              <div className="absolute inset-2 rounded-full bg-green-500/30"></div>
+              {/* <div className="absolute inset-0 rounded-full bg-green-500/20"></div> */}
+              <div
+                className={`absolute inset-0 rounded-full  ${
+                  activeRecorder === "patient"
+                    ? "bg-red-500/20"
+                    : "bg-green-500/20"
+                }`}
+              ></div>
+              <div
+                className={`absolute inset-2 rounded-full  ${
+                  activeRecorder === "patient"
+                    ? "bg-red-500/30"
+                    : "bg-green-500/30"
+                }`}
+              ></div>
+              {/* <div className="absolute inset-2 rounded-full bg-green-500/30"></div> */}
               <div
                 className={`absolute inset-4 rounded-full transition-colors ${
                   activeRecorder === "patient" ? "bg-red-500" : "bg-green-500"
