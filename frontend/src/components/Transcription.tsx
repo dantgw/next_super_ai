@@ -135,9 +135,7 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
                 }
 
                 // Process async operations without blocking the stream
-                if (targetLanguage !== "en") {
-                  translateText(newTranscript).catch(console.error);
-                }
+                translateText(newTranscript).catch(console.error);
                 processWithBedrock(newTranscript).catch(console.error);
               }
             }
@@ -232,9 +230,14 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
 
   const translateText = async (text: string) => {
     try {
+      // Only skip translation if both source and target are English
+      const isEnglishToEnglish =
+        primaryLanguage.startsWith("en") && targetLanguage === "en";
+      if (isEnglishToEnglish) return;
+
       const translateCommand = new TranslateTextCommand({
         Text: text,
-        SourceLanguageCode: "en",
+        SourceLanguageCode: primaryLanguage.split("-")[0], // e.g., 'en-US' -> 'en'
         TargetLanguageCode: targetLanguage,
       });
 
@@ -532,10 +535,10 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
               className="bg-gray-50 p-4 rounded-lg h-64 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100"
             >
               <p className="whitespace-pre-wrap text-gray-800 leading-relaxed">
-                {targetLanguage !== "en" && translatedText
+                {translatedText
                   ? translatedText
-                  : targetLanguage === "en"
-                  ? "Translation disabled (target language is English)"
+                  : primaryLanguage.startsWith("en") && targetLanguage === "en"
+                  ? "Translation disabled (English to English)"
                   : "No translation yet..."}
               </p>
             </div>
