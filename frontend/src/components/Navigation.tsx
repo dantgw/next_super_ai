@@ -62,7 +62,7 @@ export function Navigation() {
 
   return (
     <nav className="flex space-x-4 items-center relative">
-      <Link
+      {/* <Link
         href="/transcribe"
         className={cn(
           "font-medium transition-colors",
@@ -83,7 +83,7 @@ export function Navigation() {
         )}
       >
         Summarization
-      </Link>
+      </Link> */}
       {user && (
         <div className="ml-4 relative" ref={dropdownRef}>
           <button

@@ -230,6 +230,15 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
         const processStream = async () => {
           try {
             for await (const event of data.TranscriptResultStream!) {
+              // Skip processing if audio is currently playing to prevent feedback loop
+              if (isAudioCurrentlyPlaying()) {
+                console.log(
+                  "Skipping transcription processing - audio is playing"
+                );
+                setDebugInfo("Transcription paused - audio is playing");
+                continue;
+              }
+
               const results = event.TranscriptEvent?.Transcript?.Results;
               if (results && results.length && !results[0]?.IsPartial) {
                 const result = results[0];
@@ -537,7 +546,22 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
 
       audio.onended = () => {
         setIsPlayingAudio(null);
+        // Add a small delay to prevent immediate transcription of residual audio
+        setTimeout(() => {
+          console.log("Audio playback ended, ready for new transcription");
+          setDebugInfo("Ready for transcription");
+        }, 500);
       };
+
+      // Add a fallback timeout to clear playing state
+      const audioDuration = audio.duration || 10; // Default to 10 seconds if duration is unknown
+      setTimeout(() => {
+        if (isPlayingAudio === segmentId) {
+          console.log("Audio playback timeout - clearing state");
+          setIsPlayingAudio(null);
+          setDebugInfo("Ready for transcription");
+        }
+      }, (audioDuration + 1) * 1000); // Add 1 second buffer
 
       audio.play();
       setIsPlayingAudio(segmentId);
@@ -866,6 +890,22 @@ Generate the summary in markdown using the above structure, replacing the bracke
           </label>
         </div>
       </div>
+
+      {/* Debug info and status indicators */}
+      {/* <div className="flex justify-center space-x-4">
+        {debugInfo && (
+          <div className="bg-blue-50 border border-blue-200 text-blue-700 rounded-lg px-3 py-2 text-sm">
+            <span className="mr-2">ℹ️</span>
+            {debugInfo}
+          </div>
+        )}
+        {isAudioCurrentlyPlaying() && (
+          <div className="bg-yellow-50 border border-yellow-200 text-yellow-700 rounded-lg px-3 py-2 text-sm">
+            <span className="mr-2">🔇</span>
+            Transcription paused - audio playing
+          </div>
+        )}
+      </div> */}
 
       {/* Transcript Views */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
