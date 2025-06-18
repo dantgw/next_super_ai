@@ -188,63 +188,49 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
                     side: isProviderSpeaking ? "left" : "right",
                   };
 
-                  // Add original segment
+                  // Add original segment immediately
                   setSpeakerSegments((prev) => [...prev, newSegment]);
                   console.log(
                     "Added original segment to",
                     isProviderSpeaking ? "left" : "right"
                   );
 
-                  try {
-                    // Get the base language codes for translation
-                    const sourceCode = isProviderSpeaking
-                      ? primaryLanguage.split("-")[0]
-                      : targetLanguage.split("-")[0];
-                    const targetCode = isProviderSpeaking
-                      ? targetLanguage.split("-")[0]
-                      : primaryLanguage.split("-")[0];
+                  // Handle translation asynchronously without blocking
+                  const sourceCode = isProviderSpeaking
+                    ? primaryLanguage.split("-")[0]
+                    : targetLanguage.split("-")[0];
+                  const targetCode = isProviderSpeaking
+                    ? targetLanguage.split("-")[0]
+                    : primaryLanguage.split("-")[0];
 
-                    console.log(
-                      "Translation direction:",
-                      sourceCode,
-                      "->",
-                      targetCode
-                    );
-
-                    const translatedText = await translateText(
-                      newTranscript,
-                      sourceCode,
-                      targetCode
-                    );
-                    console.log("Translation result:", translatedText);
-
-                    if (translatedText) {
-                      const translatedSegment: SpeakerSegment = {
-                        id: Date.now(),
-                        speaker: isProviderSpeaking ? "Doctor" : "Patient",
-                        text: translatedText,
-                        timestamp: Date.now(),
-                        language: isProviderSpeaking
-                          ? targetLanguage
-                          : primaryLanguage,
-                        side: isProviderSpeaking ? "right" : "left",
-                      };
-                      setSpeakerSegments((prev) => [
-                        ...prev,
-                        translatedSegment,
-                      ]);
-                      console.log(
-                        "Added translated segment to",
-                        isProviderSpeaking ? "right" : "left"
-                      );
-                    }
-                  } catch (error) {
-                    console.error("Translation error:", error);
-                    setError("Translation failed. Please try again.");
-                  }
-
-                  // Process with Bedrock in background
-                  // processWithBedrock(newTranscript).catch(console.error);
+                  // Start translation without awaiting
+                  translateText(newTranscript, sourceCode, targetCode)
+                    .then((translatedText) => {
+                      if (translatedText) {
+                        const translatedSegment: SpeakerSegment = {
+                          id: Date.now(),
+                          speaker: isProviderSpeaking ? "Doctor" : "Patient",
+                          text: translatedText,
+                          timestamp: Date.now(),
+                          language: isProviderSpeaking
+                            ? targetLanguage
+                            : primaryLanguage,
+                          side: isProviderSpeaking ? "right" : "left",
+                        };
+                        setSpeakerSegments((prev) => [
+                          ...prev,
+                          translatedSegment,
+                        ]);
+                        console.log(
+                          "Added translated segment to",
+                          isProviderSpeaking ? "right" : "left"
+                        );
+                      }
+                    })
+                    .catch((error) => {
+                      console.error("Translation error:", error);
+                      setError("Translation failed. Please try again.");
+                    });
                 }
               }
             }
