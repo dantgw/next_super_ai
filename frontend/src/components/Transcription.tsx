@@ -6,6 +6,7 @@ import {
   bedrockClient,
   transcribeLanguages,
   translateLanguages,
+  speakerLabels,
 } from "../config/aws-config";
 import {
   StartStreamTranscriptionCommand,
@@ -16,7 +17,6 @@ import { InvokeModelCommand } from "@aws-sdk/client-bedrock-runtime";
 import MicrophoneStream from "microphone-stream";
 import { Buffer } from "buffer";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -34,18 +34,21 @@ interface TranscriptionProps {
 
 interface SpeakerSegment {
   id: number;
-  speaker: string;
+  speaker: "Doctor" | "Patient";
   text: string;
   timestamp: number;
   language?: string;
-  translated?: string;
+  side: "left" | "right";
 }
+
+// Add type for supported language codes
+type SupportedLanguageCode = keyof typeof speakerLabels;
 
 export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
   const [isRecording, setIsRecording] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [transcription, setTranscription] = useState("");
-  const [targetLanguage, setTargetLanguage] = useState("en");
+  const [targetLanguage, setTargetLanguage] = useState("zh-CN");
   const [translatedText, setTranslatedText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [debugInfo, setDebugInfo] = useState<string>("");
@@ -54,7 +57,6 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
     useState(false);
   const [primaryLanguage, setPrimaryLanguage] = useState("en-US");
   const [sessionId, setSessionId] = useState<string>("");
-  const [currentTime, setCurrentTime] = useState<string>("");
   const [activeRecorder, setActiveRecorder] = useState<
     "provider" | "patient" | null
   >(null);
@@ -74,11 +76,6 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
         .substring(2, 9)
         .toUpperCase()}`
     );
-    const timer = setInterval(
-      () => setCurrentTime(new Date().toLocaleTimeString()),
-      1000
-    );
-    return () => clearInterval(timer);
   }, []);
 
   // Auto-scroll to bottom when content updates
@@ -128,7 +125,10 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
   };
 
   // Start streaming transcription
-  const startRecording = async (languageCode: string) => {
+  const startRecording = async (
+    languageCode: string,
+    recorder: "provider" | "patient"
+  ) => {
     try {
       setError(null);
       setIsLoading(true);
@@ -166,53 +166,81 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
                 const newTranscript = result.Alternatives?.[0]?.Transcript;
 
                 if (newTranscript) {
-                  console.log("New transcript:", newTranscript);
+                  console.log("New transcript received:", newTranscript);
+                  console.log(
+                    "Current languages - Primary:",
+                    primaryLanguage,
+                    "Target:",
+                    targetLanguage
+                  );
+
+                  const isProviderSpeaking = recorder === "provider";
+                  console.log("Is provider speaking:", isProviderSpeaking);
 
                   const newSegment: SpeakerSegment = {
                     id: Date.now(),
-                    speaker:
-                      activeRecorder === "provider" ? "Provider" : "Patient",
+                    speaker: isProviderSpeaking ? "Doctor" : "Patient",
                     text: newTranscript,
                     timestamp: Date.now(),
+                    language: isProviderSpeaking
+                      ? primaryLanguage
+                      : targetLanguage,
+                    side: isProviderSpeaking ? "left" : "right",
                   };
 
+                  // Add original segment
                   setSpeakerSegments((prev) => [...prev, newSegment]);
+                  console.log(
+                    "Added original segment to",
+                    isProviderSpeaking ? "left" : "right"
+                  );
 
-                  // Translate if needed
-                  if (activeRecorder === "provider") {
-                    // Translate from provider language to patient language
-                    translateText(
+                  try {
+                    // Get the base language codes for translation
+                    const sourceCode = isProviderSpeaking
+                      ? primaryLanguage.split("-")[0]
+                      : targetLanguage.split("-")[0];
+                    const targetCode = isProviderSpeaking
+                      ? targetLanguage.split("-")[0]
+                      : primaryLanguage.split("-")[0];
+
+                    console.log(
+                      "Translation direction:",
+                      sourceCode,
+                      "->",
+                      targetCode
+                    );
+
+                    const translatedText = await translateText(
                       newTranscript,
-                      primaryLanguage.split("-")[0],
-                      targetLanguage
-                    ).then((translatedText) => {
-                      if (translatedText) {
-                        setSpeakerSegments((prev) =>
-                          prev.map((seg) =>
-                            seg === newSegment
-                              ? { ...seg, translated: translatedText }
-                              : seg
-                          )
-                        );
-                      }
-                    });
-                  } else {
-                    // Translate from patient language to provider language
-                    translateText(
-                      newTranscript,
-                      targetLanguage,
-                      primaryLanguage.split("-")[0]
-                    ).then((translatedText) => {
-                      if (translatedText) {
-                        setSpeakerSegments((prev) =>
-                          prev.map((seg) =>
-                            seg === newSegment
-                              ? { ...seg, translated: translatedText }
-                              : seg
-                          )
-                        );
-                      }
-                    });
+                      sourceCode,
+                      targetCode
+                    );
+                    console.log("Translation result:", translatedText);
+
+                    if (translatedText) {
+                      const translatedSegment: SpeakerSegment = {
+                        id: Date.now(),
+                        speaker: isProviderSpeaking ? "Doctor" : "Patient",
+                        text: translatedText,
+                        timestamp: Date.now(),
+                        language: isProviderSpeaking
+                          ? targetLanguage
+                          : primaryLanguage,
+                        side: isProviderSpeaking ? "right" : "left",
+                      };
+                      setSpeakerSegments((prev) => [
+                        ...prev,
+                        translatedSegment,
+                      ]);
+                      console.log(
+                        "Added translated segment to",
+                        isProviderSpeaking ? "right" : "left"
+                      );
+                    }
+                  } catch (error) {
+                    console.error("Translation error:", error);
+                    setError("Translation failed. Please try again.");
                   }
 
                   // Process with Bedrock in background
@@ -230,7 +258,10 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
         };
 
         // Start processing the stream in the background
-        processStream();
+        processStream().catch((error) => {
+          console.error("Process stream error:", error);
+          setError("Failed to process audio stream. Please try again.");
+        });
       }
 
       setIsRecording(true);
@@ -259,12 +290,17 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
     toLang: string
   ): Promise<string | undefined> => {
     try {
-      // Convert from transcribe language code to translate language code
-      const sourceCode = getTranslateLanguageCode(fromLang);
-      const targetCode = getTranslateLanguageCode(toLang);
+      console.log("Starting translation from", fromLang, "to", toLang);
+
+      // Get the base language codes for translation
+      const sourceCode = fromLang.split("-")[0];
+      const targetCode = toLang.split("-")[0];
 
       // Skip translation if languages are the same
-      if (sourceCode === targetCode) return text;
+      if (sourceCode === targetCode) {
+        console.log("Same language, skipping translation");
+        return text;
+      }
 
       const translateCommand = new TranslateTextCommand({
         Text: text,
@@ -272,11 +308,14 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
         TargetLanguageCode: targetCode,
       });
 
+      console.log("Sending translation request");
       const translatedResult = await translateClient.send(translateCommand);
+      console.log("Translation completed:", translatedResult.TranslatedText);
+
       return translatedResult.TranslatedText;
     } catch (err) {
-      console.error("Translation error:", err);
-      return undefined;
+      console.error("Translation error in translateText function:", err);
+      throw err;
     }
   };
 
@@ -304,7 +343,7 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
       await stopRecording();
     }
     setActiveRecorder("provider");
-    startRecording(primaryLanguage);
+    startRecording(primaryLanguage, "provider");
   };
 
   const startPatientRecording = async () => {
@@ -312,7 +351,7 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
       await stopRecording();
     }
     setActiveRecorder("patient");
-    startRecording(targetLanguage); // Use the patient's selected language for transcription
+    startRecording(targetLanguage, "patient"); // Use the patient's selected language for transcription
   };
 
   const stopRecording = async () => {
@@ -374,6 +413,13 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
     });
     streamRef.current = stream;
     microphoneStreamRef.current.setStream(stream);
+  };
+
+  // Get speaker label based on language
+  const getSpeakerLabel = (speaker: "Doctor" | "Patient", language: string) => {
+    const languageCode = language as SupportedLanguageCode;
+    const labels = speakerLabels[languageCode] || speakerLabels["en-US"];
+    return speaker === "Doctor" ? labels.doctor : labels.patient;
   };
 
   return (
@@ -499,16 +545,24 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
                     Press "Start Recording" for Provider or Patient.
                   </p>
                 ) : (
-                  speakerSegments.map((segment) => (
-                    <div key={segment.id} className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-slate-600">
-                          {segment.speaker}:
-                        </span>
-                        <p className="text-sm text-gray-900">{segment.text}</p>
+                  speakerSegments
+                    .filter((segment) => segment.side === "left")
+                    .map((segment) => (
+                      <div key={segment.id} className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium text-slate-600">
+                            {getSpeakerLabel(
+                              segment.speaker,
+                              segment.language || primaryLanguage
+                            )}
+                            :
+                          </span>
+                          <p className="text-sm text-gray-900">
+                            {segment.text}
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                  ))
+                    ))
                 )}
               </div>
             </ScrollArea>
@@ -543,18 +597,24 @@ export const Transcription: React.FC<TranscriptionProps> = ({ className }) => {
                     Transcript will appear here.
                   </p>
                 ) : (
-                  speakerSegments.map((segment) => (
-                    <div key={`trans-${segment.id}`} className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-slate-600">
-                          {segment.speaker}:
-                        </span>
-                        <p className="text-sm text-gray-900">
-                          {segment.translated || "Translation in progress..."}
-                        </p>
+                  speakerSegments
+                    .filter((segment) => segment.side === "right")
+                    .map((segment) => (
+                      <div key={`trans-${segment.id}`} className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium text-slate-600">
+                            {getSpeakerLabel(
+                              segment.speaker,
+                              segment.language || targetLanguage
+                            )}
+                            :
+                          </span>
+                          <p className="text-sm text-gray-900">
+                            {segment.text}
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                  ))
+                    ))
                 )}
               </div>
             </ScrollArea>

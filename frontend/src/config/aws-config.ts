@@ -45,3 +45,18 @@ export const translateLanguages = [
   { code: "zh", name: "Chinese (Simplified)" },
   { code: "ko", name: "Korean" },
 ];
+
+// Speaker labels in different languages
+export const speakerLabels = {
+  "en-US": { doctor: "Doctor", patient: "Patient" },
+  "es-US": { doctor: "Doctor", patient: "Paciente" },
+  "fr-FR": { doctor: "Médecin", patient: "Patient" },
+  "de-DE": { doctor: "Arzt", patient: "Patient" },
+  "it-IT": { doctor: "Dottore", patient: "Paziente" },
+  "pt-BR": { doctor: "Médico", patient: "Paciente" },
+  "ar-SA": { doctor: "طبيب", patient: "مريض" },
+  "hi-IN": { doctor: "डॉक्टर", patient: "मरीज़" },
+  "ja-JP": { doctor: "医師", patient: "患者" },
+  "zh-CN": { doctor: "医生", patient: "患者" },
+  "ko-KR": { doctor: "의사", patient: "환자" },
+};
